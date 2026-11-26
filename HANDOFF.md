@@ -1,8 +1,8 @@
-# Handoff — Blender "mesh-only" fork (yuri-schmaltz/blender)
+# Handoff — Blender "mesh-only" fork (yuri-schmaltz/blenderix)
 
 > Documento de retomada para o próximo agente/sessão.
-> Repo: `/home/yuri/Documents/blender` — fork de **Blender 5.0.4 (BLENDER_VERSION 504)**,
-> branch `main`, remote `origin` = `https://github.com/yuri-schmaltz/blender.git`.
+> Repo: `/home/yuri/Documents/blenderix` — BlenderiX **1.0**, versão interna **5.4.0 alpha**,
+> branch `main`, remote `origin` = `https://github.com/yuri-schmaltz/blenderix.git`.
 > Última atualização: **2026-11-26**.
 
 ---
@@ -11,7 +11,7 @@
 
 O fork é um **Blender enxuto para modelagem/manipulação de malhas 3D**. Tudo que não
 serve a esse objetivo foi removido (implementação), mas o **DNA/RNA/enums** foram
-mantidos para que arquivos `.blend` antigos continuem carregando e versionando.
+mantidos. A migração legada geral foi removida e a compatibilidade precisa de testes com arquivos reais.
 
 Protocolo do projeto (regra de ouro):
 
@@ -117,29 +117,63 @@ Marca do aplicativo: **BlenderiX** (logo, metainfo e ícone próprios — ver §
 
 ## 4. Como compilar e validar
 
-Build local em `/home/yuri/Documents/build` (fora do repo):
+Use o [workflow Linux](.github/workflows/build.yml) como referência de dependências e
+opções. Ele usa Ubuntu 26.04, GCC 14 e Python 3.14. Em um clone limpo, com
+Git LFS e as dependências do workflow instaladas, prepare os recursos e o Eigen.
 
 ```bash
-cmake -S . -B ../build -G Ninja \
-  -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
-  -DPYTHON_VERSION=3.13 -DWITH_LIBS_PRECOMPILED=OFF -DWITH_EMBREE=OFF \
-  -DWITH_CYCLES=OFF -DWITH_CODEC_FFMPEG=OFF -DWITH_CODEC_SNDFILE=OFF \
-  -DWITH_ALEMBIC=OFF -DWITH_USD=OFF -DWITH_MATERIALX=OFF -DWITH_OPENIMAGEDENOISE=OFF \
-  -DWITH_INTERNATIONAL=OFF -DWITH_DRACO=OFF -DWITH_KTX=OFF
-cd ../build && ninja blender && ninja install
+build_files/ci/restore_lfs.sh
+eigen_prefix="$(mktemp -d)"
+cmake -DEIGEN_PREFIX="$eigen_prefix" -P build_files/ci/install_eigen.cmake
 ```
 
-- **Python ≥ 3.13** é obrigatório (`CMakeLists.txt` faz `FATAL_ERROR` abaixo disso).
-- O binário fica em `../build/bin/blender`; os scripts instalados em `../build/bin/5.4/scripts`.
-- O link usa `-Wl,--unresolved-symbols=ignore-all`
-  (`source/creator/CMakeLists.txt`), por isso código removido pode continuar referenciado
-  sem quebrar o link — **cuidado**: chamar um operador morto dá crash em runtime.
-- Teste rápido de sanidade:
-  ```bash
-  ../build/bin/blender -b --factory-startup --python-expr \
-    "import bpy; bpy.ops.mesh.primitive_cube_add(); bpy.ops.object.mode_set(mode='EDIT'); \
-     bpy.ops.mesh.subdivide(); print(len(bpy.context.object.data.vertices))"
-  ```
+Use as opções do passo **Configure CMake (mesh-only)**, com
+`Eigen3_DIR=$eigen_prefix/share/eigen3/cmake`. Depois, compile e valide a instalação.
+
+```bash
+cmake --build ../build --target bf_intern_dualcon --parallel
+cmake --build ../build --parallel
+install_dir="$(mktemp -d)"
+cmake --install ../build --prefix "$install_dir"
+build_files/ci/test_installed.sh "$install_dir/blender"
+```
+
+O artefato do CI contém a instalação em um `.tar.gz`, que preserva a
+permissão de execução. Esse pacote usa as bibliotecas de sistema do Ubuntu
+26.04, inclusive o Python 3.14.
+
+Para verificar compatibilidade com uma versão anterior, gere os arquivos
+em um diretório de teste com o Blender dessa versão. Faça a verificação
+de cada caso em um processo separado do BlenderiX instalado.
+
+```bash
+fixtures="$(mktemp -d)"
+"$upstream_blender" -b --factory-startup --python-exit-code 1 \
+  --python build_files/ci/legacy_blend.py -- "$fixtures"
+for case in mesh modifier linked mixed; do
+  "$install_dir/blender" -b --factory-startup --python-exit-code 1 \
+    --python build_files/ci/legacy_blend.py -- "$fixtures" --case "$case"
+done
+```
+
+O teste gráfico precisa de uma sessão de desktop ou de um servidor X virtual.
+Ele redesenha o viewport, edita uma malha, aplica um modificador, verifica
+importação e exportação de OBJ, STL e PLY, e reabre o arquivo salvo em outro
+processo.
+
+```bash
+export BLENDERIX_GUI_DIR="$(mktemp -d)"
+"$install_dir/blender" --factory-startup --python-exit-code 1 \
+  --python build_files/ci/graphical_acceptance.py
+BLENDERIX_GUI_REOPEN=1 "$install_dir/blender" --factory-startup \
+  "$BLENDERIX_GUI_DIR/acceptance.blend" --python-exit-code 1 \
+  --python build_files/ci/graphical_acceptance.py
+```
+
+O link ainda usa `-Wl,--unresolved-symbols=ignore-all` em
+`source/creator/CMakeLists.txt`. Referências a implementações removidas
+podem ser identificadas configurando um segundo diretório de build com as
+mesmas opções e `-DWITH_STRICT_BLENDER_LINK=ON`.
 
 ---
 
@@ -169,7 +203,7 @@ cd ../build && ninja blender && ninja install
 ## 6. Comandos úteis
 
 ```bash
-cd /home/yuri/Documents/blender
+cd /home/yuri/Documents/blenderix
 git --no-pager log --oneline -10
 git --no-pager status
 git --no-pager diff

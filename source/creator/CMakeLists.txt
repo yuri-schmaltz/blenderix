@@ -320,7 +320,12 @@ if(WITH_PYTHON_MODULE)
 
 else()
   add_executable(blender ${EXETYPE} ${SRC})
-  target_link_options(blender PRIVATE "-Wl,--unresolved-symbols=ignore-all")
+  if(UNIX AND NOT APPLE)
+    option(WITH_STRICT_BLENDER_LINK "Fail when linking BlenderiX with unresolved symbols" OFF)
+    if(NOT WITH_STRICT_BLENDER_LINK)
+      target_link_options(blender PRIVATE "-Wl,--unresolved-symbols=ignore-all")
+    endif()
+  endif()
   if(WITH_CPU_CHECK)
     # blender_cpu_check *NEEDS* to be linked first, there can be no exceptions
     # to this, this is to ensure this will be the first code to run once the
