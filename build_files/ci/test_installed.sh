@@ -8,11 +8,23 @@ export BLENDERIX_SMOKE_FILE="$work_dir/cube.blend"
 
 "$blender" --background --factory-startup --python-exit-code 1 --python-expr '
 import bpy
+import math
 import os
 
 bpy.ops.mesh.primitive_cube_add()
 cube = bpy.context.object
 assert len(cube.data.vertices) == 8
+
+assert bpy.ops.transform.translate(value=(1, 2, 3)) == {"FINISHED"}
+assert tuple(cube.location) == (1, 2, 3)
+assert bpy.ops.transform.rotate(value=math.pi / 2, orient_axis="Z") == {"FINISHED"}
+assert abs(cube.rotation_euler.z - math.pi / 2) < 1e-5
+assert bpy.ops.transform.resize(value=(2, 2, 2)) == {"FINISHED"}
+assert all(abs(scale - 2) < 1e-5 for scale in cube.scale)
+cube.location = (0, 0, 0)
+cube.rotation_euler = (0, 0, 0)
+cube.scale = (1, 1, 1)
+print("Mesh object transforms passed")
 
 mesh = cube.data
 colors = mesh.color_attributes.new(name="Working space test", type="FLOAT_COLOR", domain="POINT")

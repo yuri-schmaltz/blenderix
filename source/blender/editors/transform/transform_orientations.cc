@@ -18,7 +18,6 @@
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
-#include "DNA_sequence_types.h"
 #include "DNA_space_types.h"
 #include "DNA_view3d_types.h"
 
@@ -47,9 +46,7 @@
 #include "ANIM_armature.hh"
 #include "ANIM_bone_collections.hh"
 
-#include "SEQ_select.hh"
 
-#include "SEQ_transform.hh"
 #include "transform.hh"
 #include "transform_orientations.hh"
 
@@ -779,17 +776,6 @@ short transform_orientation_matrix_get(bContext *C,
   if (orient_index == V3D_ORIENT_CUSTOM_MATRIX) {
     copy_m3_m3(r_spacemtx, custom);
     return V3D_ORIENT_CUSTOM_MATRIX;
-  }
-
-  if (t->spacetype == SPACE_SEQ && t->options & CTX_SEQUENCER_IMAGE) {
-    Scene *scene = t->scene;
-    Strip *strip = seq::select_active_get(scene);
-    if (strip && strip->data->transform && orient_index == V3D_ORIENT_LOCAL) {
-      const float2 mirror = seq::image_transform_mirror_factor_get(strip);
-      axis_angle_to_mat3_single(
-          r_spacemtx, 'Z', strip->data->transform->rotation * mirror[0] * mirror[1]);
-      return orient_index;
-    }
   }
 
   Object *ob = CTX_data_active_object(C);

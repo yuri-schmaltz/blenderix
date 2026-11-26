@@ -325,27 +325,15 @@ static void ApplySnapTranslation(TransInfo *t, float vec[3])
   float point[3];
   getSnapPoint(t, point);
 
-  if (t->spacetype == SPACE_SEQ) {
-    if (t->region->regiontype == RGN_TYPE_PREVIEW) {
-      snap_sequencer_image_apply_translate(t, vec);
-    }
-    else {
-      snap_sequencer_apply_seqslide(t, vec);
+  if (t->spacetype == SPACE_VIEW3D && (t->options & CTX_PAINT_CURVE)) {
+    if (ED_view3d_project_float_global(t->region, point, point, V3D_PROJ_TEST_NOP) !=
+        V3D_PROJ_RET_OK)
+    {
+      zero_v3(point); /* No good answer here... */
     }
   }
-  else {
-    if (t->spacetype == SPACE_VIEW3D) {
-      if (t->options & CTX_PAINT_CURVE) {
-        if (ED_view3d_project_float_global(t->region, point, point, V3D_PROJ_TEST_NOP) !=
-            V3D_PROJ_RET_OK)
-        {
-          zero_v3(point); /* No good answer here... */
-        }
-      }
-    }
 
-    sub_v3_v3v3(vec, point, t->tsnap.snap_source);
-  }
+  sub_v3_v3v3(vec, point, t->tsnap.snap_source);
 }
 static void translate_snap_increment_init(const TransInfo *t)
 {
