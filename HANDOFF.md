@@ -119,7 +119,9 @@ Marca do aplicativo: **BlenderiX** (logo, metainfo e ícone próprios — ver §
 
 Use o [workflow Linux](.github/workflows/build.yml) como referência de dependências e
 opções. Ele usa Ubuntu 26.04, GCC 14 e Python 3.14. Em um clone limpo, com
-Git LFS e as dependências do workflow instaladas, prepare os recursos e as versões de Eigen e OpenImageIO declaradas no código.
+Git LFS e as dependências do workflow instaladas, prepare os recursos e as
+versões de Eigen e OpenImageIO declaradas no código. Os assets são obtidos
+do remoto do BlenderiX, com o servidor do Blender como alternativa.
 
 ```bash
 build_files/ci/restore_lfs.sh

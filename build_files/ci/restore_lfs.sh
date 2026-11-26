@@ -2,9 +2,11 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-# This snapshot references assets stored in Blender's official LFS repository.
 git lfs install --local --skip-smudge --skip-repo
-git -c lfs.url=https://projects.blender.org/blender/blender.git/info/lfs lfs fetch origin HEAD
+if ! git lfs fetch origin HEAD; then
+    # Blender's official repository also stores the assets inherited by this snapshot.
+    git -c lfs.url=https://projects.blender.org/blender/blender.git/info/lfs lfs fetch origin HEAD
+fi
 git lfs fsck --objects --pointers HEAD
 git lfs checkout
 
