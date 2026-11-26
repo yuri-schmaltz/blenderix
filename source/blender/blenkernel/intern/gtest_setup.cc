@@ -55,9 +55,6 @@ void gtest_setup()
   fn::multi_function::register_common_functions();
   BKE_idtype_init();
   BKE_modifier_init();
-  seq::modifiers_init();
-  BKE_shaderfx_init();
-  BKE_volumes_init();
   DEG_register_node_types();
   BKE_callback_global_init();
   BKE_appdir_init();
@@ -66,13 +63,6 @@ void gtest_setup()
   IMB_init();
   MOV_init();
   RNA_init();
-  RE_texture_rng_init();
-  RE_engines_init();
-  bke::node_system_init();
-  BKE_brush_system_init();
-  BKE_particle_init_rng();
-  BKE_sound_init_once();
-  BKE_materials_init();
   IMB_cache_init();
 
   /* Value should be larger than #BIFICONID_LAST_STATIC which is not available here. */
@@ -82,15 +72,9 @@ void gtest_setup()
 void gtest_teardown()
 {
   BKE_icons_free();
-  BKE_materials_exit();
-  bke::node_system_exit();
   RNA_exit();
   BLI_threadapi_exit();
-  RE_texture_rng_exit();
-  RE_engines_exit();
   BLI_task_scheduler_exit();
-  BKE_brush_system_exit();
-  BKE_sound_exit_once();
   BKE_callback_global_finalize();
   BKE_appdir_exit();
   IMB_cache_destruct();

@@ -15,12 +15,11 @@
 #include "BKE_lib_id.hh"
 #include "BKE_lib_remap.hh"
 #include "BKE_main.hh"
-#include "BKE_material.hh"
+#include "BKE_collection.hh"
+#include "BKE_scene.hh"
 #include "BKE_mesh.h"
-#include "BKE_node.hh"
 #include "BKE_object.hh"
 
-#include "NOD_defaults.hh"
 
 namespace blender {
 
@@ -64,14 +63,14 @@ class TestData {
 
 class LibRemapTest : public BlenderGTestBase {};
 
-class MaterialTestData : public TestData {
+class EmbeddedCollectionTestData : public TestData {
  public:
-  Material *material = nullptr;
-  bNodeTree *material_nodetree = nullptr;
-  MaterialTestData()
+  Scene *scene = nullptr;
+  Collection *master_collection = nullptr;
+  EmbeddedCollectionTestData()
   {
-    material = BKE_material_add(this->bmain, "Material");
-    this->material_nodetree = this->material->nodetree;
+    this->scene = BKE_scene_add(this->bmain, "Scene");
+    this->master_collection = this->scene->master_collection;
   }
 };
 
@@ -111,32 +110,32 @@ class MeshObjectTestData : public MeshTestData {
 
 TEST_F(LibRemapTest, embedded_ids_can_not_be_remapped)
 {
-  MaterialTestData context;
-  bNodeTree *other_tree = BKE_id_new_nomain<bNodeTree>(nullptr);
+  EmbeddedCollectionTestData context;
+  Collection *other_collection = BKE_id_new_nomain<Collection>(nullptr);
 
-  ASSERT_NE(context.material, nullptr);
-  ASSERT_EQ(context.material_nodetree, context.material->nodetree);
+  ASSERT_NE(context.scene, nullptr);
+  ASSERT_EQ(context.master_collection, context.scene->master_collection);
 
-  BKE_libblock_remap(context.bmain, context.material_nodetree, other_tree, 0);
+  BKE_libblock_remap(context.bmain, context.master_collection, other_collection, 0);
 
-  EXPECT_EQ(context.material_nodetree, context.material->nodetree);
-  EXPECT_NE(context.material->nodetree, other_tree);
+  EXPECT_EQ(context.master_collection, context.scene->master_collection);
+  EXPECT_NE(context.scene->master_collection, other_collection);
 
-  BKE_id_free(nullptr, other_tree);
+  BKE_id_free(nullptr, other_collection);
 }
 
 TEST_F(LibRemapTest, embedded_ids_can_not_be_deleted)
 {
-  MaterialTestData context;
+  EmbeddedCollectionTestData context;
 
-  ASSERT_NE(context.material_nodetree, nullptr);
-  ASSERT_EQ(context.material_nodetree, context.material->nodetree);
+  ASSERT_NE(context.master_collection, nullptr);
+  ASSERT_EQ(context.master_collection, context.scene->master_collection);
 
   BKE_libblock_remap(
-      context.bmain, context.material_nodetree, nullptr, ID_REMAP_SKIP_NEVER_NULL_USAGE);
+      context.bmain, context.master_collection, nullptr, ID_REMAP_SKIP_NEVER_NULL_USAGE);
 
-  EXPECT_EQ(context.material_nodetree, context.material->nodetree);
-  EXPECT_NE(context.material->nodetree, nullptr);
+  EXPECT_EQ(context.master_collection, context.scene->master_collection);
+  EXPECT_NE(context.scene->master_collection, nullptr);
 }
 
 /** \} */

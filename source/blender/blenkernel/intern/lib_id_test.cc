@@ -1,3 +1,4 @@
+#include "DNA_object_types.h"
 /* SPDX-FileCopyrightText: 2020 Blender Authors
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
@@ -756,11 +757,11 @@ TEST_F(LibIDMainUniqueNameTest, names_are_unique_per_id_type)
   LibIDMainSortTestContext ctx;
 
   ID *id_a = static_cast<ID *>(BKE_id_new(ctx.bmain, ID_OB, "Foo"));
-  ID *id_b = static_cast<ID *>(BKE_id_new(ctx.bmain, ID_CA, "Foo"));
+  ID *id_b = static_cast<ID *>(BKE_id_new(ctx.bmain, ID_ME, "Foo"));
   ID *id_c = static_cast<ID *>(BKE_id_new(ctx.bmain, ID_OB, "Foo"));
 
   EXPECT_STREQ(id_a->name + 2, "Foo");
-  EXPECT_STREQ(id_b->name + 2, "Foo"); /* Different types (OB & CA) can have the same name. */
+  EXPECT_STREQ(id_b->name + 2, "Foo"); /* Different types (OB & ME) can have the same name. */
   EXPECT_STREQ(id_c->name + 2, "Foo.001");
 
   EXPECT_TRUE(BKE_main_namemap_validate(*ctx.bmain));
@@ -787,20 +788,24 @@ TEST_F(LibIDMainUniqueNameTest, name_huge_number_suffix)
 
 class LibIDMakeLocalTest : public BlenderGTestBase {};
 
-TEST_F(LibIDMakeLocalTest, brush)
+TEST_F(LibIDMakeLocalTest, mesh)
 {
   LibIDMainSortTestContext ctx;
 
   Library *lib_a = static_cast<Library *>(BKE_id_new(ctx.bmain, ID_LI, "LI_A"));
-  ID *br_a = static_cast<ID *>(BKE_id_new(ctx.bmain, ID_BR, "BR_A"));
+  ID *me_a = static_cast<ID *>(BKE_id_new(ctx.bmain, ID_ME, "ME_A"));
+  Object *ob_local = static_cast<Object *>(BKE_id_new(ctx.bmain, ID_OB, "OB_Local"));
+  ob_local->type = OB_MESH;
+  ob_local->data = me_a;
+  id_us_plus(me_a);
 
-  change_lib(ctx.bmain, br_a, lib_a);
+  change_lib(ctx.bmain, me_a, lib_a);
 
-  EXPECT_TRUE(BKE_lib_id_make_local(ctx.bmain, br_a, LIB_ID_MAKELOCAL_FORCE_COPY));
-  EXPECT_NE(br_a->newid, nullptr);
-
-  EXPECT_TRUE(br_a->newid->flag & ID_FLAG_FAKEUSER);
-  EXPECT_EQ(br_a->newid->us, 1);
+  EXPECT_TRUE(BKE_lib_id_make_local(ctx.bmain, me_a, LIB_ID_MAKELOCAL_FORCE_COPY));
+  ASSERT_NE(me_a->newid, nullptr);
+  EXPECT_FALSE(ID_IS_LINKED(me_a->newid));
+  EXPECT_EQ(ob_local->data, me_a->newid);
+  EXPECT_EQ(me_a->newid->us, 1);
 }
 
 }  // namespace blender::bke::tests

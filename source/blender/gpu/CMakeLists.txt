@@ -981,7 +981,9 @@ if(WITH_GTESTS)
     tests/gpu_testing.hh
   )
 
-  blender_add_test_suite_lib(gpu
-    "${TEST_SRC}" "${INC};${TEST_INC}" "${INC_SYS}" "${LIB};${TEST_LIB}" "${TEST_COMMON_SRC}"
-  )
+  if(TEST_SRC)
+    blender_add_test_suite_lib(gpu
+      "${TEST_SRC}" "${INC};${TEST_INC}" "${INC_SYS}" "${LIB};${TEST_LIB}" "${TEST_COMMON_SRC}"
+    )
+  endif()
 endif()

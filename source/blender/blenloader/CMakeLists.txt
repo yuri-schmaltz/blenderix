@@ -86,10 +86,10 @@ if(WITH_GTESTS)
   set(TEST_UTIL_INC
     ${INC}
     ../../../intern/ghost
+    ${CMAKE_SOURCE_DIR}/tests/gtests
   )
   set(TEST_UTIL_INC_SYS
     ${INC_SYS}
-    ${CMAKE_SOURCE_DIR}/extern/gtest/include
   )
   set(TEST_UTIL_LIB
     ${LIB}

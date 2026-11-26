@@ -36,6 +36,10 @@ class OBJMTLParserTest : public bke::BlenderGTestBase {
   }
   void check(const char *file, const MTLMaterial *expect, size_t expect_count)
   {
+    if (!tests::has_test_asset_dir()) {
+      GTEST_SKIP() << "Test assets directory (--test-assets-dir) is not configured.";
+      return;
+    }
     std::string obj_dir = tests::flags_test_asset_dir() +
                           (SEP_STR "io_tests" SEP_STR "obj" SEP_STR);
     check_impl(file, obj_dir, expect, expect_count);

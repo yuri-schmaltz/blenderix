@@ -26,6 +26,12 @@ cube.rotation_euler = (0, 0, 0)
 cube.scale = (1, 1, 1)
 print("Mesh object transforms passed")
 
+dup_scene = bpy.context.scene.copy()
+assert len(bpy.data.scenes) == 2
+bpy.data.batch_remove([dup_scene])
+assert len(bpy.data.scenes) == 1
+print("Scene creation and duplication passed")
+
 mesh = cube.data
 colors = mesh.color_attributes.new(name="Working space test", type="FLOAT_COLOR", domain="POINT")
 colors.data[0].color = (0.8, 0.2, 0.1, 1.0)

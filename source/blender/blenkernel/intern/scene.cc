@@ -184,10 +184,6 @@ static void scene_init_data(ID *id)
                      CurveMapSlopeType::PositiveNegative);
 
   scene->toolsettings = MEM_new<ToolSettings>(__func__);
-  /* Unlike other Paint structs, the `ImagePaintSettings` is default allocated, so it needs to be
-   * explicitly initialized when a new scene is created to ensure runtime data is in a consistent
-   * state. */
-  BKE_paint_init(nullptr, scene, PaintMode::Texture2D, false);
 
   scene->toolsettings->autokey_mode = U.autokey_mode;
 
@@ -259,8 +255,7 @@ static void scene_init_data(ID *id)
   /* Curve Profile */
   scene->toolsettings->custom_bevel_profile_preset = BKE_curveprofile_add(PROF_PRESET_LINE);
 
-  /* Sequencer */
-  scene->toolsettings->sequencer_tool_settings = seq::tool_settings_init();
+  scene->toolsettings->sequencer_tool_settings = nullptr;
 
   for (size_t i = 0; i < ARRAY_SIZE(scene->orientation_slots); i++) {
     scene->orientation_slots[i].index_custom = -1;
@@ -403,24 +398,6 @@ static void scene_copy_data(Main *bmain,
     scene_dst->display.shading.prop = IDP_CopyProperty(scene_src->display.shading.prop);
   }
 
-  /* sequencer data */
-  if (scene_src->ed) {
-    scene_dst->ed = MEM_new<Editing>(__func__);
-    scene_dst->ed->cache_flag = scene_src->ed->cache_flag;
-    scene_dst->ed->show_missing_media_flag = scene_src->ed->show_missing_media_flag;
-    scene_dst->ed->proxy_storage = scene_src->ed->proxy_storage;
-    STRNCPY(scene_dst->ed->proxy_dir, scene_src->ed->proxy_dir);
-    seq::seqbase_duplicate_recursive(bmain,
-                                     scene_src,
-                                     scene_dst,
-                                     &scene_dst->ed->seqbase,
-                                     &scene_src->ed->seqbase,
-                                     /* NOTE: Never use #StripDuplicate::Data here (would generate
-                                      * recursive ID duplication not, supported at all here). */
-                                     seq::StripDuplicate::All,
-                                     flag_subdata);
-    BLI_duplicatelist(&scene_dst->ed->channels, &scene_src->ed->channels);
-  }
 
   if ((flag & LIB_ID_COPY_NO_PREVIEW) == 0) {
     BKE_previewimg_id_copy(&scene_dst->id, &scene_src->id);
@@ -1623,15 +1600,12 @@ ToolSettings *BKE_toolsettings_copy(ToolSettings *toolsettings, const int flag)
   ToolSettings *ts = MEM_dupalloc(toolsettings);
   if (toolsettings->vpaint) {
     ts->vpaint = MEM_dupalloc(toolsettings->vpaint);
-    BKE_paint_copy(&toolsettings->vpaint->paint, &ts->vpaint->paint, flag);
   }
   if (toolsettings->wpaint) {
     ts->wpaint = MEM_dupalloc(toolsettings->wpaint);
-    BKE_paint_copy(&toolsettings->wpaint->paint, &ts->wpaint->paint, flag);
   }
   if (toolsettings->sculpt) {
     ts->sculpt = MEM_dupalloc(toolsettings->sculpt);
-    BKE_paint_copy(&toolsettings->sculpt->paint, &ts->sculpt->paint, flag);
 
     if (toolsettings->sculpt->automasking_cavity_curve) {
       ts->sculpt->automasking_cavity_curve = BKE_curvemapping_copy(
@@ -1652,23 +1626,18 @@ ToolSettings *BKE_toolsettings_copy(ToolSettings *toolsettings, const int flag)
   }
   if (toolsettings->gp_paint) {
     ts->gp_paint = MEM_dupalloc(toolsettings->gp_paint);
-    BKE_paint_copy(&toolsettings->gp_paint->paint, &ts->gp_paint->paint, flag);
   }
   if (toolsettings->gp_vertexpaint) {
     ts->gp_vertexpaint = MEM_dupalloc(toolsettings->gp_vertexpaint);
-    BKE_paint_copy(&toolsettings->gp_vertexpaint->paint, &ts->gp_vertexpaint->paint, flag);
   }
   if (toolsettings->gp_sculptpaint) {
     ts->gp_sculptpaint = MEM_dupalloc(toolsettings->gp_sculptpaint);
-    BKE_paint_copy(&toolsettings->gp_sculptpaint->paint, &ts->gp_sculptpaint->paint, flag);
   }
   if (toolsettings->gp_weightpaint) {
     ts->gp_weightpaint = MEM_dupalloc(toolsettings->gp_weightpaint);
-    BKE_paint_copy(&toolsettings->gp_weightpaint->paint, &ts->gp_weightpaint->paint, flag);
   }
   if (toolsettings->curves_sculpt) {
     ts->curves_sculpt = MEM_dupalloc(toolsettings->curves_sculpt);
-    BKE_paint_copy(&toolsettings->curves_sculpt->paint, &ts->curves_sculpt->paint, flag);
   }
 
   /* Color jitter curves in unified paint settings. */
@@ -1678,8 +1647,6 @@ ToolSettings *BKE_toolsettings_copy(ToolSettings *toolsettings, const int flag)
       toolsettings->unified_paint_settings.curve_rand_saturation);
   ts->unified_paint_settings.curve_rand_value = BKE_curvemapping_copy(
       toolsettings->unified_paint_settings.curve_rand_value);
-
-  BKE_paint_copy(&toolsettings->imapaint.paint, &ts->imapaint.paint, flag);
   ts->particle.paintcursor = nullptr;
   ts->particle.scene = nullptr;
   ts->particle.object = nullptr;
@@ -1693,7 +1660,7 @@ ToolSettings *BKE_toolsettings_copy(ToolSettings *toolsettings, const int flag)
   ts->custom_bevel_profile_preset = BKE_curveprofile_copy(
       toolsettings->custom_bevel_profile_preset);
 
-  ts->sequencer_tool_settings = seq::tool_settings_copy(toolsettings->sequencer_tool_settings);
+  ts->sequencer_tool_settings = nullptr;
   return ts;
 }
 

@@ -2,7 +2,9 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
-#include "BKE_anim_data.hh"
+#include "BKE_collection.hh"
+#include "BKE_mesh.h"
+#include "BKE_object.hh"
 #include "BKE_gtest_base.hh"
 #include "BKE_idprop.hh"
 #include "BKE_lib_id.hh"
@@ -78,74 +80,55 @@ TEST_F(SceneTest, frame_snap_by_seconds)
   EXPECT_FLOAT_EQ(10000.0, BKE_scene_frame_snap_by_seconds(&fake_scene, 2.0, 10000.0));
 }
 
-TEST_F(SceneTest, linked_copy_id_remapping)
+TEST_F(SceneTest, full_copy_mesh_object_id_remapping)
 {
-  Scene *scene_src = BKE_id_new<Scene>(bmain, "Scene_source");
-  bAction *action_src = BKE_id_new<bAction>(bmain, "Scene_source_action");
-  BKE_animdata_set_action(nullptr, &scene_src->id, action_src);
-  AnimData *animdata_src = BKE_animdata_from_id(&scene_src->id);
-  ASSERT_NE(animdata_src, nullptr);
-  EXPECT_EQ(animdata_src->action, action_src);
+  Scene *scene_src = BKE_scene_add(bmain, "Scene_source");
+  Mesh *mesh_src = BKE_mesh_add(bmain, "Scene_source_mesh");
+  Object *ob_src = BKE_object_add_only_object(bmain, OB_MESH, "Scene_source_ob");
+  ob_src->data = id_cast<ID *>(mesh_src);
+  BKE_collection_object_add(bmain, scene_src->master_collection, ob_src);
 
   constexpr StringRef idp_scene2scene_name = "scene2scene";
-  constexpr StringRef idp_scene2action_name = "scene2action";
-  constexpr StringRef idp_action2scene_name = "action2scene";
-  constexpr StringRef idp_action2action_name = "action2action";
+  constexpr StringRef idp_scene2mesh_name = "scene2mesh";
+  constexpr StringRef idp_mesh2scene_name = "mesh2scene";
+  constexpr StringRef idp_mesh2mesh_name = "mesh2mesh";
 
   IDProperty *scene_idgroup_src = IDP_EnsureProperties(&scene_src->id);
   IDP_AddToGroup(scene_idgroup_src,
                  bke::idprop::create(idp_scene2scene_name, &scene_src->id).release());
   IDP_AddToGroup(scene_idgroup_src,
-                 bke::idprop::create(idp_scene2action_name, &action_src->id).release());
+                 bke::idprop::create(idp_scene2mesh_name, &mesh_src->id).release());
 
-  IDProperty *action_idgroup_src = IDP_EnsureProperties(&action_src->id);
-  IDP_AddToGroup(action_idgroup_src,
-                 bke::idprop::create(idp_action2scene_name, &scene_src->id).release());
-  IDP_AddToGroup(action_idgroup_src,
-                 bke::idprop::create(idp_action2action_name, &action_src->id).release());
+  IDProperty *mesh_idgroup_src = IDP_EnsureProperties(&mesh_src->id);
+  IDP_AddToGroup(mesh_idgroup_src,
+                 bke::idprop::create(idp_mesh2scene_name, &scene_src->id).release());
+  IDP_AddToGroup(mesh_idgroup_src,
+                 bke::idprop::create(idp_mesh2mesh_name, &mesh_src->id).release());
 
   Scene *scene_copy = BKE_scene_duplicate(
       bmain,
       scene_src,
-      SCE_COPY_LINK_COLLECTION,
-      static_cast<eDupli_ID_Flags>(U.dupflag | USER_DUP_OBJECT),
+      SCE_COPY_FULL,
+      static_cast<eDupli_ID_Flags>(U.dupflag | USER_DUP_OBJECT | USER_DUP_MESH),
       LIB_ID_DUPLICATE_IS_ROOT_ID);
 
-  /* Source data should remain unchanged. */
-
-  EXPECT_EQ(IDP_ID_get(IDP_GetPropertyFromGroup(scene_idgroup_src, idp_scene2scene_name)),
-            &scene_src->id);
-  EXPECT_EQ(IDP_ID_get(IDP_GetPropertyFromGroup(scene_idgroup_src, idp_scene2action_name)),
-            &action_src->id);
-
-  EXPECT_EQ(IDP_ID_get(IDP_GetPropertyFromGroup(action_idgroup_src, idp_action2scene_name)),
-            &scene_src->id);
-  EXPECT_EQ(IDP_ID_get(IDP_GetPropertyFromGroup(action_idgroup_src, idp_action2action_name)),
-            &action_src->id);
-
-  /* Copied data should have its ID usages remapped to new copies if possible. */
-
+  ASSERT_NE(scene_copy, nullptr);
   EXPECT_NE(scene_copy, scene_src);
-  AnimData *animdata_copy = BKE_animdata_from_id(&scene_copy->id);
-  ASSERT_NE(animdata_copy, nullptr);
-  EXPECT_NE(animdata_copy, animdata_src);
-  bAction *action_copy = animdata_copy->action;
-  ASSERT_NE(action_copy, nullptr);
-  EXPECT_NE(action_copy, action_src);
 
   IDProperty *scene_idgroup_copy = IDP_GetProperties(&scene_copy->id);
   ASSERT_NE(scene_idgroup_copy, nullptr);
   EXPECT_EQ(IDP_ID_get(IDP_GetPropertyFromGroup(scene_idgroup_copy, idp_scene2scene_name)),
             &scene_copy->id);
-  EXPECT_EQ(IDP_ID_get(IDP_GetPropertyFromGroup(scene_idgroup_copy, idp_scene2action_name)),
-            &action_copy->id);
+  ID *mesh_copy_id = IDP_ID_get(IDP_GetPropertyFromGroup(scene_idgroup_copy, idp_scene2mesh_name));
+  ASSERT_NE(mesh_copy_id, nullptr);
+  EXPECT_NE(mesh_copy_id, &mesh_src->id);
 
-  IDProperty *action_idgroup_copy = IDP_GetProperties(&action_copy->id);
-  ASSERT_NE(action_idgroup_copy, nullptr);
-  EXPECT_EQ(IDP_ID_get(IDP_GetPropertyFromGroup(action_idgroup_copy, idp_action2scene_name)),
+  IDProperty *mesh_idgroup_copy = IDP_GetProperties(mesh_copy_id);
+  ASSERT_NE(mesh_idgroup_copy, nullptr);
+  EXPECT_EQ(IDP_ID_get(IDP_GetPropertyFromGroup(mesh_idgroup_copy, idp_mesh2scene_name)),
             &scene_copy->id);
-  EXPECT_EQ(IDP_ID_get(IDP_GetPropertyFromGroup(action_idgroup_copy, idp_action2action_name)),
-            &action_copy->id);
+  EXPECT_EQ(IDP_ID_get(IDP_GetPropertyFromGroup(mesh_idgroup_copy, idp_mesh2mesh_name)),
+            mesh_copy_id);
 }
 
 }  // namespace blender::bke::tests

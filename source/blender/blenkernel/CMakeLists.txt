@@ -644,17 +644,14 @@ if(WITH_GTESTS)
   set(TEST_SRC
     intern/asset_metadata_test.cc
     intern/attribute_storage_test.cc
-    intern/bake_items_serialize_test.cc
     intern/blender_project_test.cc
     intern/bpath_test.cc
-    intern/cryptomatte_test.cc
     intern/deform_test.cc
     intern/file_handler_test.cc
     intern/idprop_serialize_test.cc
     intern/idprop_test.cc
     intern/image_test.cc
     intern/key_test.cc
-    intern/layer_test.cc
     intern/lib_id_remapper_test.cc
     intern/lib_id_test.cc
     intern/lib_query_test.cc
@@ -662,8 +659,6 @@ if(WITH_GTESTS)
     intern/main_namemap_test.cc
     intern/main_test.cc
     intern/mesh_validate_test.cc
-    intern/node_socket_value_iter_test.cc
-    intern/node_socket_value_test.cc
     intern/path_templates_test.cc
     intern/recents_test.cc
     intern/scene_test.cc

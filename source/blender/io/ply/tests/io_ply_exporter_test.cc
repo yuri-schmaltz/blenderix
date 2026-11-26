@@ -686,6 +686,7 @@ TEST_F(PLYExportPLYDataTest, CubeLoadPLYData)
 {
   PLYExportParams params;
   params.export_uv = false;
+  if (!tests::has_test_asset_dir()) { GTEST_SKIP(); }
   PlyData plyData = load_ply_data_from_blendfile("io_tests/blend_geometry/cube_all_data.blend",
                                                  params);
   EXPECT_EQ(plyData.vertices.size(), 8);
@@ -695,6 +696,7 @@ TEST_F(PLYExportPLYDataTest, CubeLoadPLYDataUV)
 {
   PLYExportParams params;
   params.export_uv = true;
+  if (!tests::has_test_asset_dir()) { GTEST_SKIP(); }
   PlyData plyData = load_ply_data_from_blendfile("io_tests/blend_geometry/cube_all_data.blend",
                                                  params);
   EXPECT_EQ(plyData.vertices.size(), 8);
@@ -707,6 +709,7 @@ TEST_F(PLYExportPLYDataTest, CubeLooseEdgesLoadPLYData)
   params.forward_axis = IO_AXIS_Y;
   params.up_axis = IO_AXIS_Z;
   params.global_scale = 1.0f;
+  if (!tests::has_test_asset_dir()) { GTEST_SKIP(); }
   PlyData plyData = load_ply_data_from_blendfile(
       "io_tests/blend_geometry/cube_loose_edges_verts.blend", params);
   float3 exp_vertices[] = {
@@ -739,6 +742,7 @@ TEST_F(PLYExportPLYDataTest, CubeLooseEdgesLoadPLYDataUV)
   params.up_axis = IO_AXIS_Z;
   params.global_scale = 1.0f;
   params.export_uv = true;
+  if (!tests::has_test_asset_dir()) { GTEST_SKIP(); }
   PlyData plyData = load_ply_data_from_blendfile(
       "io_tests/blend_geometry/cube_loose_edges_verts.blend", params);
   float3 exp_vertices[] = {
@@ -783,6 +787,7 @@ TEST_F(PLYExportPLYDataTest, CubesVertexAttrs)
   PLYExportParams params;
   params.export_uv = true;
   params.export_attributes = true;
+  if (!tests::has_test_asset_dir()) { GTEST_SKIP(); }
   PlyData plyData = load_ply_data_from_blendfile(
       "io_tests/blend_geometry/cubes_vertex_attrs.blend", params);
   EXPECT_EQ(plyData.vertices.size(), 28);
@@ -795,6 +800,7 @@ TEST_F(PLYExportPLYDataTest, SuzanneLoadPLYDataUV)
 {
   PLYExportParams params;
   params.export_uv = true;
+  if (!tests::has_test_asset_dir()) { GTEST_SKIP(); }
   PlyData plyData = load_ply_data_from_blendfile("io_tests/blend_geometry/suzanne_all_data.blend",
                                                  params);
   EXPECT_EQ(plyData.uv_coordinates.size(), 542);

@@ -31,7 +31,18 @@ static void close_font(int id)
   BLF_exit();
 }
 
-class BlfLoadTest : public bke::BlenderGTestBase {};
+class BlfAssetFontTestBase : public bke::BlenderGTestBase {
+ protected:
+  void SetUp() override
+  {
+    bke::BlenderGTestBase::SetUp();
+    if (!tests::has_test_asset_dir()) {
+      GTEST_SKIP() << "Test assets directory (--test-assets-dir) is not configured.";
+    }
+  }
+};
+
+class BlfLoadTest : public BlfAssetFontTestBase {};
 
 TEST_F(BlfLoadTest, load)
 {
@@ -83,7 +94,7 @@ TEST_F(BlfLoadTest, has_glyph)
   close_font(id);
 }
 
-class BlfMetricsTest : public bke::BlenderGTestBase {};
+class BlfMetricsTest : public BlfAssetFontTestBase {};
 
 TEST_F(BlfMetricsTest, get_vfont_metrics)
 {
@@ -128,7 +139,7 @@ TEST_F(BlfMetricsTest, variable_weight)
   close_font(id);
 }
 
-class BlfDimensionsTest : public bke::BlenderGTestBase {};
+class BlfDimensionsTest : public BlfAssetFontTestBase {};
 
 TEST_F(BlfDimensionsTest, width_max)
 {
@@ -209,7 +220,7 @@ TEST_F(BlfDimensionsTest, advance)
   close_font(id);
 }
 
-class BlfWrappingMinimalTest : public bke::BlenderGTestBase {};
+class BlfWrappingMinimalTest : public BlfAssetFontTestBase {};
 
 TEST_F(BlfWrappingMinimalTest, wrap_overflow_ascii)
 {
@@ -263,7 +274,7 @@ TEST_F(BlfWrappingMinimalTest, wrap_hardlimit)
   close_font(id);
 }
 
-class BlfWrappingPathTest : public bke::BlenderGTestBase {};
+class BlfWrappingPathTest : public BlfAssetFontTestBase {};
 
 TEST_F(BlfWrappingPathTest, wrap_path_overflow_ascii)
 {
@@ -335,7 +346,7 @@ TEST_F(BlfWrappingPathTest, wrap_path_hardlimit)
   close_font(id);
 }
 
-class BlfWrappingTypographicalTest : public bke::BlenderGTestBase {};
+class BlfWrappingTypographicalTest : public BlfAssetFontTestBase {};
 
 TEST_F(BlfWrappingTypographicalTest, wrap_typographical_thinspace)
 {
@@ -461,6 +472,34 @@ TEST_F(BlfWrappingMinimalTest, wrap_hardlimit_too_narrow_width)
     const Vector<StringRef> wrapped = BLF_string_wrap(id, sample, 0, BLFWrapMode::HardLimit);
     EXPECT_EQ(wrapped, expected_wrap);
   }
+  close_font(id);
+}
+
+class BlfBundledFontTest : public bke::BlenderGTestBase {};
+
+TEST_F(BlfBundledFontTest, load_and_measure_bundled_inter_font)
+{
+  char path[FILE_MAX];
+  BLI_path_join(path, tests::flags_test_release_dir().c_str(), "datafiles", "fonts", "Inter.woff2");
+  BLF_init();
+  const int id = BLF_load(path);
+  ASSERT_NE(id, -1) << "Failed to load bundled Inter.woff2 from " << path;
+  EXPECT_TRUE(BLF_is_loaded(path));
+  EXPECT_TRUE(BLF_is_loaded_id(id));
+  EXPECT_TRUE(BLF_has_glyph(id, 'X'));
+  EXPECT_TRUE(BLF_has_variable_weight(id));
+
+  const char sample[] = "BlenderiX Mesh Modeling";
+  BLF_size(id, 48.0f);
+  BLF_character_weight(id, 300);
+  const float width_light = BLF_width(id, sample, sizeof(sample) - 1);
+  BLF_character_weight(id, 700);
+  const float width_bold = BLF_width(id, sample, sizeof(sample) - 1);
+  EXPECT_GT(width_bold, width_light);
+
+  Vector<StringRef> wrapped = BLF_string_wrap(id, sample, int(width_bold * 0.6f));
+  EXPECT_GE(wrapped.size(), 2);
+
   close_font(id);
 }
 

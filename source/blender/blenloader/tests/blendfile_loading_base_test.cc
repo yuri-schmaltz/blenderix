@@ -26,6 +26,7 @@
 
 #include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
+#include "BLI_task_c.hh"
 #include "BLI_threads.hh"
 
 #include "BLO_readfile.hh"
@@ -59,6 +60,7 @@ void BlendfileLoadingBaseTest::SetUpTestCase()
    * main() in creator.c. */
   CLG_init();
   BLI_threadapi_init();
+  BLI_task_scheduler_init();
 
   BKE_blender_globals_init();
 
@@ -67,12 +69,9 @@ void BlendfileLoadingBaseTest::SetUpTestCase()
   BKE_appdir_init();
   IMB_init();
   BKE_modifier_init();
-  seq::modifiers_init();
   DEG_register_node_types();
   RNA_init();
-  bke::node_system_init();
   BKE_callback_global_init();
-  BKE_vfont_builtin_register(datatoc_bfont_pfb, datatoc_bfont_pfb_size);
   BLF_init();
 
   BKE_blender_globals_main_replace(BKE_main_new());
@@ -96,6 +95,7 @@ void BlendfileLoadingBaseTest::TearDownTestCase()
 
   BLF_exit();
   DEG_free_node_types();
+  BLI_task_scheduler_exit();
   BLI_threadapi_exit();
 
   BKE_blender_atexit();
@@ -109,19 +109,24 @@ void BlendfileLoadingBaseTest::TearDownTestCase()
 
 void BlendfileLoadingBaseTest::TearDown()
 {
-  BKE_mball_cubeTable_free();
   blendfile_free();
   depsgraph_free();
 
   testing::Test::TearDown();
 }
 
+static void skip_without_test_assets()
+{
+  GTEST_SKIP() << "Test assets directory (--test-assets-dir) is not configured.";
+}
+
 bool BlendfileLoadingBaseTest::blendfile_load(const char *filepath)
 {
-  const std::string &test_assets_dir = tests::flags_test_asset_dir();
-  if (test_assets_dir.empty()) {
+  if (!tests::has_test_asset_dir()) {
+    skip_without_test_assets();
     return false;
   }
+  const std::string &test_assets_dir = tests::flags_test_asset_dir();
 
   char abspath[FILE_MAX];
   BLI_path_join(abspath, test_assets_dir.c_str(), filepath);

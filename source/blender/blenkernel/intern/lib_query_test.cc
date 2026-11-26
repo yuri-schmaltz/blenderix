@@ -7,7 +7,7 @@
 #include "DNA_mesh_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
-#include "DNA_world_types.h"
+#include "DNA_image_types.h"
 
 #include "RNA_define.hh"
 
@@ -20,13 +20,10 @@
 #include "BKE_lib_id.hh"
 #include "BKE_lib_query.hh"
 #include "BKE_main.hh"
-#include "BKE_material.hh"
 #include "BKE_mesh.h"
-#include "BKE_node.hh"
 #include "BKE_object.hh"
 #include "BKE_scene.hh"
 
-#include "NOD_defaults.hh"
 
 #include "BLI_index_range.hh"
 #include "BLI_set.hh"
@@ -97,35 +94,6 @@ class WholeIDTestData : public TestData {
   }
 };
 
-class IDSubDataTestData : public WholeIDTestData {
- public:
-  bNode *node = nullptr;
-
-  IDSubDataTestData(const bool generate_cached_bmain_relations = false)
-  {
-    /* Add a material that contains an embedded nodetree and assign a custom property to one of
-     * its nodes. */
-    this->material = BKE_material_add(this->bmain, "Material");
-    nodes::node_tree_shader_default(this->C, this->bmain, &this->material->id);
-
-    BKE_object_material_assign(
-        this->bmain, this->object, this->material, this->object->actcol, BKE_MAT_ASSIGN_OBJECT);
-
-    this->node = this->material->nodetree->nodes.first();
-
-    this->node->prop = bke::idprop::create_group("Node Custom Properties").release();
-    IDP_AddToGroup(this->node->prop,
-                   bke::idprop::create("ID Pointer", &this->target->id).release());
-
-    if (generate_cached_bmain_relations) {
-      BKE_main_relations_create(this->bmain, 0);
-    }
-  }
-  ~IDSubDataTestData()
-  {
-    BKE_id_free(this->bmain, &this->material->id);
-  }
-};
 }  // namespace
 
 /* -------------------------------------------------------------------- */
@@ -194,118 +162,6 @@ TEST_F(LibQueryTest, libquery_basic)
   }
 }
 
-TEST_F(LibQueryTest, libquery_recursive)
-{
-  /* Behavior should remain strictly identical, between foreach_id iterations over 'raw' ID data,
-   * or the cached relationships stored in Main::relations. */
-  IDSubDataTestData context_raw = {false};
-  IDSubDataTestData context_cached = {true};
-
-  for (const IDSubDataTestData *context_p : {&context_raw, &context_cached}) {
-    const IDSubDataTestData &context = *context_p;
-
-    EXPECT_NE(context.scene, nullptr);
-    EXPECT_NE(context.object, nullptr);
-    EXPECT_NE(context.target, nullptr);
-    EXPECT_NE(context.mesh, nullptr);
-
-    /* Reset all ID user-count to 0. */
-    ID *id_iter;
-    FOREACH_MAIN_ID_BEGIN (context.bmain, id_iter) {
-      id_iter->us = 0;
-    }
-    FOREACH_MAIN_ID_END;
-
-    /* Set an invalid user-count value to all IDs used by the scene, recursively.
-     * Here, it should mean all IDs in Main, including the scene itself
-     * (because of the loop-back pointer from the embedded master collection to its scene owner).
-     */
-    auto set_count = [](LibraryIDLinkCallbackData *cb_data) -> int {
-      if (*(cb_data->id_pointer)) {
-        (*(cb_data->id_pointer))->us = 42;
-      }
-      return IDWALK_RET_NOP;
-    };
-    BKE_library_foreach_ID_link(
-        context.bmain, &context.scene->id, set_count, nullptr, IDWALK_RECURSE);
-    FOREACH_MAIN_ID_BEGIN (context.bmain, id_iter) {
-      EXPECT_EQ(id_iter->us, 42);
-    }
-    FOREACH_MAIN_ID_END;
-
-    /* Reset all ID user-count to 0. */
-    FOREACH_MAIN_ID_BEGIN (context.bmain, id_iter) {
-      id_iter->us = 0;
-    }
-    FOREACH_MAIN_ID_END;
-
-    /* Recompute valid user counts for all IDs used by the scene, recursively. */
-    auto compute_count = [](LibraryIDLinkCallbackData *cb_data) -> int {
-      if (*(cb_data->id_pointer) && (cb_data->cb_flag & IDWALK_CB_USER) != 0) {
-        (*(cb_data->id_pointer))->us++;
-      }
-      return IDWALK_RET_NOP;
-    };
-    BKE_library_foreach_ID_link(
-        context.bmain, &context.scene->id, compute_count, nullptr, IDWALK_RECURSE);
-    EXPECT_EQ(context.scene->id.us, 0);
-    EXPECT_EQ(context.object->id.us, 1);
-    /* Scene's master collection, and scene's compositor node IDProperty. Note that object
-     * constraint is _not_ a reference-counting usage. */
-    EXPECT_EQ(context.target->id.us, 2);
-    EXPECT_EQ(context.mesh->id.us, 1);
-  }
-}
-
-TEST_F(LibQueryTest, libquery_subdata)
-{
-  /* Behavior should remain strictly identical, between foreach_id iterations over 'raw' ID data,
-   * or the cached relationships stored in Main::relations. */
-  IDSubDataTestData context_raw = {false};
-  IDSubDataTestData context_cached = {true};
-
-  for (const IDSubDataTestData *context_p : {&context_raw, &context_cached}) {
-    const IDSubDataTestData &context = *context_p;
-
-    ASSERT_NE(context.scene, nullptr);
-    ASSERT_NE(context.object, nullptr);
-    ASSERT_NE(context.target, nullptr);
-    ASSERT_NE(context.mesh, nullptr);
-    ASSERT_NE(context.material, nullptr);
-
-    /* Reset all ID user-count to 0. */
-    ID *id_iter;
-    FOREACH_MAIN_ID_BEGIN (context.bmain, id_iter) {
-      id_iter->us = 0;
-    }
-    FOREACH_MAIN_ID_END;
-
-    /* Set an invalid user-count value to all IDs used by one of the material's nodes. */
-    auto set_count = [](LibraryIDLinkCallbackData *cb_data) -> int {
-      if (*(cb_data->id_pointer)) {
-        (*(cb_data->id_pointer))->us = 42;
-      }
-      return IDWALK_RET_NOP;
-    };
-    auto node_foreach_id = [&context](LibraryForeachIDData *data) {
-      bke::node_node_foreach_id(context.node, data);
-    };
-
-    BKE_library_foreach_subdata_id(context.bmain,
-                                   &context.material->id,
-                                   &context.material->nodetree->id,
-                                   node_foreach_id,
-                                   set_count,
-                                   nullptr,
-                                   IDWALK_NOP);
-
-    EXPECT_EQ(context.scene->id.us, 0);
-    EXPECT_EQ(context.object->id.us, 0);
-    /* The material's node-tree input node IDProperty uses the target object. */
-    EXPECT_EQ(context.target->id.us, 42);
-    EXPECT_EQ(context.mesh->id.us, 0);
-  }
-}
 
 /** \} */
 
@@ -317,7 +173,7 @@ class UnusedIDsTestData : public TestData {
  public:
   Library *library = nullptr;
   Scene *scene = nullptr;
-  World *world = nullptr;
+  Image *image = nullptr;
   Object *object = nullptr;
   Object *target = nullptr;
   Mesh *mesh = nullptr;
@@ -340,9 +196,10 @@ class UnusedIDsTestData : public TestData {
     used_ids.add(&this->scene->id);
     id_us_ensure_real(&this->scene->id);
     CTX_data_scene_set(this->C, this->scene);
-    this->world = BKE_id_new<World>(this->bmain, "IDLibQueryWorld");
-    used_ids.add(&this->world->id);
-    scene->world = this->world;
+    this->image = BKE_id_new<Image>(this->bmain, "IDLibQueryImage");
+    used_ids.add(&this->image->id);
+    IDP_AddToGroup(IDP_EnsureProperties(&this->scene->id),
+                   bke::idprop::create("SceneToImage", &this->image->id).release());
 
     this->object = BKE_object_add_only_object(this->bmain, OB_MESH, "IDLibQueryObject");
     used_ids.add(&this->object->id);
@@ -360,8 +217,8 @@ class UnusedIDsTestData : public TestData {
     /* 'dummy' unused data. */
     Mesh *me0 = BKE_id_new_in_lib<Mesh>(this->bmain, this->library, "IDLibQueryMeshUnused");
     unused_ids.add(&me0->id);
-    World *world0 = BKE_id_new<World>(this->bmain, "IDLibQueryWorldUnused");
-    unused_ids.add(&world0->id);
+    Image *image0 = BKE_id_new<Image>(this->bmain, "IDLibQueryImageUnused");
+    unused_ids.add(&image0->id);
 
     /* 'Fake User' IDs are always considered as used. */
     Object *ob0 = BKE_object_add_only_object(this->bmain, OB_EMPTY, "IDLibQueryObjectUnused");
@@ -379,9 +236,9 @@ class UnusedIDsTestData : public TestData {
       unused_recursive_ids.add(&me1->id);
       Mesh *me2 = BKE_id_new_in_lib<Mesh>(this->bmain, lib_1, "IDLibQueryMeshUnused2_Island_1");
       unused_recursive_ids.add(&me2->id);
-      World *world1 = BKE_id_new_in_lib<World>(
-          this->bmain, lib_2, "IDLibQueryWorldUnused_Island_1");
-      unused_recursive_ids.add(&world1->id);
+      Image *image1 = BKE_id_new_in_lib<Image>(
+          this->bmain, lib_2, "IDLibQueryImageUnused_Island_1");
+      unused_recursive_ids.add(&image1->id);
       Object *ob1 = BKE_id_new_in_lib<Object>(
           this->bmain, lib_1, "IDLibQueryObjectUnused_Island_1");
       ob1->type = OB_MESH;
@@ -393,9 +250,9 @@ class UnusedIDsTestData : public TestData {
       IDP_AddToGroup(ob1_idp, bke::idprop::create("Ob1ToMesh1", &me1->id).release());
       IDP_AddToGroup(ob1_idp, bke::idprop::create("Ob1ToMesh2", &me2->id).release());
       IDProperty *me2_idp = IDP_EnsureProperties(&me2->id);
-      IDP_AddToGroup(me2_idp, bke::idprop::create("Mesh1ToWorld1", &world1->id).release());
-      IDProperty *world1_idp = IDP_EnsureProperties(&world1->id);
-      IDP_AddToGroup(world1_idp, bke::idprop::create("World1ToOb1", &ob1->id).release());
+      IDP_AddToGroup(me2_idp, bke::idprop::create("Mesh1ToImage1", &image1->id).release());
+      IDProperty *image1_idp = IDP_EnsureProperties(&image1->id);
+      IDP_AddToGroup(image1_idp, bke::idprop::create("Image1ToOb1", &ob1->id).release());
     };
     /* Disconnected graph of all local IDs. */
     make_islands(nullptr, nullptr);
@@ -415,7 +272,7 @@ TEST_F(LibQueryTest, libquery_unused_ids_direct)
 
   ASSERT_NE(context.library, nullptr);
   ASSERT_NE(context.scene, nullptr);
-  ASSERT_NE(context.world, nullptr);
+  ASSERT_NE(context.image, nullptr);
   ASSERT_NE(context.object, nullptr);
   ASSERT_NE(context.target, nullptr);
   ASSERT_NE(context.mesh, nullptr);
@@ -450,8 +307,8 @@ TEST_F(LibQueryTest, libquery_unused_ids_direct)
   for (const int64_t index : IndexRange(INDEX_ID_MAX)) {
     EXPECT_EQ(data.num_linked[index], 0);
   }
-  EXPECT_EQ(data.num_local[INDEX_ID_WO], 1);
-  EXPECT_EQ(data.num_local[INDEX_ID_WO], data.num_total[INDEX_ID_WO]);
+  EXPECT_EQ(data.num_local[INDEX_ID_IM], 1);
+  EXPECT_EQ(data.num_local[INDEX_ID_IM], data.num_total[INDEX_ID_IM]);
   EXPECT_EQ(data.num_local[INDEX_ID_NULL], 1);
   EXPECT_EQ(data.num_local[INDEX_ID_NULL], data.num_total[INDEX_ID_NULL]);
 
@@ -498,8 +355,8 @@ TEST_F(LibQueryTest, libquery_unused_ids_direct)
 
   BKE_lib_query_unused_ids_tag(context.bmain, ID_TAG_DOIT, data);
 
-  EXPECT_EQ(data.num_local[INDEX_ID_WO], 1);
-  EXPECT_EQ(data.num_local[INDEX_ID_WO], data.num_total[INDEX_ID_WO]);
+  EXPECT_EQ(data.num_local[INDEX_ID_IM], 1);
+  EXPECT_EQ(data.num_local[INDEX_ID_IM], data.num_total[INDEX_ID_IM]);
   EXPECT_EQ(data.num_local[INDEX_ID_NULL], 1);
   EXPECT_EQ(data.num_linked[INDEX_ID_ME], 1);
   EXPECT_EQ(data.num_linked[INDEX_ID_ME], data.num_total[INDEX_ID_ME]);
@@ -525,7 +382,7 @@ TEST_F(LibQueryTest, libquery_unused_ids_recursive)
 
   ASSERT_NE(context.library, nullptr);
   ASSERT_NE(context.scene, nullptr);
-  ASSERT_NE(context.world, nullptr);
+  ASSERT_NE(context.image, nullptr);
   ASSERT_NE(context.object, nullptr);
   ASSERT_NE(context.target, nullptr);
   ASSERT_NE(context.mesh, nullptr);
@@ -565,8 +422,8 @@ TEST_F(LibQueryTest, libquery_unused_ids_recursive)
   /* Data from the directly unused IDs, and the disconnected graphs. Note that the mixed graph is
    * not detected here, as some of its IDs are linked, therefore not considered, which generates
    * valid usages for the local IDs of that group. */
-  EXPECT_EQ(data.num_local[INDEX_ID_WO], 2);
-  EXPECT_EQ(data.num_local[INDEX_ID_WO], data.num_total[INDEX_ID_WO]);
+  EXPECT_EQ(data.num_local[INDEX_ID_IM], 2);
+  EXPECT_EQ(data.num_local[INDEX_ID_IM], data.num_total[INDEX_ID_IM]);
   EXPECT_EQ(data.num_local[INDEX_ID_ME], 2);
   EXPECT_EQ(data.num_local[INDEX_ID_ME], data.num_total[INDEX_ID_ME]);
   EXPECT_EQ(data.num_local[INDEX_ID_OB], 1);
@@ -605,8 +462,8 @@ TEST_F(LibQueryTest, libquery_unused_ids_recursive)
   /* Data from the directly unused IDs, and the disconnected graphs. Note that the mixed graph is
    * not detected here, as some of its IDs are local, therefore not considered, which generates
    * valid usages for the linked IDs of that group. */
-  EXPECT_EQ(data.num_linked[INDEX_ID_WO], 1);
-  EXPECT_EQ(data.num_linked[INDEX_ID_WO], data.num_total[INDEX_ID_WO]);
+  EXPECT_EQ(data.num_linked[INDEX_ID_IM], 1);
+  EXPECT_EQ(data.num_linked[INDEX_ID_IM], data.num_total[INDEX_ID_IM]);
   EXPECT_EQ(data.num_linked[INDEX_ID_ME], 3);
   EXPECT_EQ(data.num_linked[INDEX_ID_ME], data.num_total[INDEX_ID_ME]);
   EXPECT_EQ(data.num_linked[INDEX_ID_OB], 1);
@@ -642,17 +499,17 @@ TEST_F(LibQueryTest, libquery_unused_ids_recursive)
 
   /* Data from the directly unused IDs, and the disconnected graphs. Here IDs from all three
    * disconnected graphs must be tagged. */
-  EXPECT_EQ(data.num_local[INDEX_ID_WO], 2);
+  EXPECT_EQ(data.num_local[INDEX_ID_IM], 2);
   EXPECT_EQ(data.num_local[INDEX_ID_ME], 3);
   EXPECT_EQ(data.num_local[INDEX_ID_OB], 2);
   EXPECT_EQ(data.num_local[INDEX_ID_NULL], 7);
-  EXPECT_EQ(data.num_linked[INDEX_ID_WO], 2);
+  EXPECT_EQ(data.num_linked[INDEX_ID_IM], 2);
   EXPECT_EQ(data.num_linked[INDEX_ID_ME], 4);
   EXPECT_EQ(data.num_linked[INDEX_ID_OB], 1);
   EXPECT_EQ(data.num_linked[INDEX_ID_NULL], 7);
 
-  EXPECT_EQ(data.num_local[INDEX_ID_WO] + data.num_linked[INDEX_ID_WO],
-            data.num_total[INDEX_ID_WO]);
+  EXPECT_EQ(data.num_local[INDEX_ID_IM] + data.num_linked[INDEX_ID_IM],
+            data.num_total[INDEX_ID_IM]);
   EXPECT_EQ(data.num_local[INDEX_ID_ME] + data.num_linked[INDEX_ID_ME],
             data.num_total[INDEX_ID_ME]);
   EXPECT_EQ(data.num_local[INDEX_ID_OB] + data.num_linked[INDEX_ID_OB],

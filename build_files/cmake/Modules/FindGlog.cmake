@@ -197,8 +197,9 @@ glog_reset_find_library_prefix()
 
 # Handle REQUIRED / QUIET optional arguments.
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(GLOG DEFAULT_MSG
+find_package_handle_standard_args(Glog DEFAULT_MSG
   GLOG_INCLUDE_DIRS GLOG_LIBRARIES)
+set(GLOG_FOUND ${Glog_FOUND})
 
 # Only mark internal variables as advanced if we found glog, otherwise
 # leave them visible in the standard GUI for the user to set manually.

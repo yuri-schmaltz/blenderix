@@ -66,7 +66,6 @@ if(WITH_GTESTS)
   set(TEST_SRC
     tests/obj_exporter_tests.cc
     tests/obj_mtl_parser_tests.cc
-    tests/obj_nurbs_io_tests.cc
   )
 
   set(TEST_INC

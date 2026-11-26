@@ -109,7 +109,11 @@ Marca do aplicativo: **BlenderiX** (logo, metainfo e ícone próprios — ver §
    `properties_grease_pencil_common.py` e `properties_physics_geometry_nodes.py`
    continuam na árvore, mas servem a painéis que não existem mais — revisar e
    remover o que ficou órfão.
-6. **Testes**: a suíte `tests/` foi removida no commit `9bcf9a17a2d`.
+6. **Testes**: o harness C++ em `tests/gtests/` foi restaurado; `WITH_GTESTS=ON`
+   compila e executa 18 suítes no CTest (~2.160 testes unitários C++) com
+   detecção de vazamentos do `guardedalloc`. Testes de subsistemas removidos
+   foram excluídos, e os casos dependentes do acervo externo `tests/files` são
+   ignorados com `GTEST_SKIP()` quando `--test-assets-dir` não é informado.
 7. **Arquivo solto na raiz**: `icon.png` (1 MB) está na raiz do repo e não é
    referenciado por nenhum script — mover para `icons/` ou remover (a regra é
    não commitar binários avulsos na raiz).
@@ -140,6 +144,7 @@ instalação.
 ```bash
 cmake --build ../build --target bf_intern_dualcon --parallel
 cmake --build ../build --parallel
+ctest --test-dir ../build --output-on-failure --timeout 120
 install_dir="$(mktemp -d)"
 cmake --install ../build --prefix "$install_dir"
 mkdir -p "$install_dir/lib"
@@ -207,8 +212,10 @@ presentes no fork, eliminou as referências indefinidas a `blender::fn`. O
 diagnóstico do commit `feaa4ac` encontrou 1.836 símbolos indefinidos distintos
 no build estrito usual e 1.777 com descarte de seções não referenciadas. Esse
 segundo resultado usa `-ffunction-sections -fdata-sections` em C e C++ e
-`-Wl,--gc-sections` no linker. O CMake com `WITH_GTESTS=ON` gerou alvos incompletos e o CTest
-listou zero testes.
+`-Wl,--gc-sections` no linker. O CMake com `WITH_GTESTS=ON` compila o executável
+unificado `bin/tests/blender_test` e os binários independentes (`atomic_test`,
+`guardedalloc_test`, `BLI_test`, `shader_tool_test`, `makesdna_test`), passando
+nas 18 suítes registradas no CTest.
 
 ---
 

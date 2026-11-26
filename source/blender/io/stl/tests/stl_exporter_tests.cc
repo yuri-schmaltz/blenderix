@@ -1,3 +1,5 @@
+#include "BKE_mesh.h"
+#include "BLI_listbase.hh"
 /* SPDX-FileCopyrightText: 2023 Blender Authors
  *
  * SPDX-License-Identifier: Apache-2.0 */
@@ -13,6 +15,16 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BKE_collection.hh"
+#include "BKE_lib_id.hh"
+#include "BKE_main.hh"
+#include "BKE_mesh.hh"
+#include "BKE_object.hh"
+#include "BKE_scene.hh"
+#include "DEG_depsgraph_build.hh"
+#include "DNA_mesh_types.h"
+#include "DNA_object_types.h"
+#include "DNA_scene_types.h"
 #include "IO_stl.hh"
 #include "stl_export.hh"
 
@@ -120,6 +132,56 @@ TEST_F(STLExportTest, cubes_positioned)
 {
   compare_to_golden("io_tests" SEP_STR "blend_geometry" SEP_STR "cubes_positioned.blend",
                     "io_tests" SEP_STR "stl" SEP_STR "cubes_positioned.stl");
+}
+
+TEST_F(STLExportTest, roundtrip_quad_mesh_ascii_and_binary)
+{
+  Main *bmain = BKE_main_new();
+  Scene *scene = BKE_scene_add(bmain, "STLScene");
+  ViewLayer *view_layer = scene->view_layers.first();
+
+  Mesh *mesh = BKE_mesh_add(bmain, "STLQuad");
+  Mesh *nomain_mesh = BKE_mesh_new_nomain(4, 4, 1, 4);
+  nomain_mesh->vert_positions_for_write().copy_from(
+      {float3(0, 0, 0), float3(2, 0, 0), float3(2, 2, 0), float3(0, 2, 0)});
+  nomain_mesh->edges_for_write().copy_from({int2(0, 1), int2(1, 2), int2(2, 3), int2(3, 0)});
+  nomain_mesh->face_offsets_for_write().copy_from({0, 4});
+  nomain_mesh->corner_verts_for_write().copy_from({0, 1, 2, 3});
+  nomain_mesh->corner_edges_for_write().copy_from({0, 1, 2, 3});
+  BKE_mesh_nomain_to_mesh(nomain_mesh, mesh, nullptr);
+
+  Object *ob = BKE_object_add_only_object(bmain, OB_MESH, "STLObject");
+  ob->data = id_cast<ID *>(mesh);
+  BKE_collection_object_add(bmain, scene->master_collection, ob);
+
+  Depsgraph *local_depsgraph = DEG_graph_new(bmain, scene, view_layer, DAG_EVAL_VIEWPORT);
+  DEG_graph_build_from_view_layer(local_depsgraph);
+  BKE_scene_graph_update_tagged(local_depsgraph, bmain);
+
+  for (const bool ascii : {true, false}) {
+    const std::string out_path = get_temp_filename(ascii ? "quad_ascii.stl" : "quad_bin.stl");
+    STLExportParams export_params{};
+    STRNCPY(export_params.filepath, out_path.c_str());
+    export_params.ascii_format = ascii;
+    export_frame(local_depsgraph, 1.0f, export_params);
+
+    if (ascii) {
+      const std::string text = read_temp_file_in_string(out_path);
+      EXPECT_NE(text.find("facet normal"), std::string::npos);
+    }
+
+    STLImportParams import_params{};
+    STRNCPY(import_params.filepath, out_path.c_str());
+    Mesh *imported = STL_import_mesh(&import_params);
+    ASSERT_NE(imported, nullptr);
+    EXPECT_EQ(imported->verts_num, 4);
+    EXPECT_EQ(imported->faces_num, 2);
+    BKE_id_free(nullptr, imported);
+    BLI_delete(out_path.c_str(), false, false);
+  }
+
+  DEG_graph_free(local_depsgraph);
+  BKE_main_free(bmain);
 }
 
 }  // namespace blender::io::stl

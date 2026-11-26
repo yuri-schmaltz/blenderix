@@ -1,3 +1,10 @@
+#ifndef WIN32
+#  include <unistd.h>
+#else
+#  include <process.h>
+#  define getpid _getpid
+#endif
+#include <filesystem>
 /* SPDX-FileCopyrightText: 2023 Blender Authors
  *
  * SPDX-License-Identifier: Apache-2.0 */
@@ -179,35 +186,43 @@ TEST_F(FileOpsTest, dir_create_recursive)
  * fstream tests.
  */
 
+static std::string ensure_utf8_test_file(std::string &r_cleanup_dir)
+{
+  if (has_test_asset_dir()) {
+    r_cleanup_dir.clear();
+    return flags_test_asset_dir() + "/asset_library/новый/blender_assets.cats.txt";
+  }
+  r_cleanup_dir = (std::filesystem::temp_directory_path() / ("bli_fstream_utf8_" + std::to_string(getpid()))).string();
+  const std::string utf8_dir = r_cleanup_dir + SEP_STR + "новый";
+  BLI_dir_create_recursive(utf8_dir.c_str());
+  const std::string filepath = utf8_dir + SEP_STR + "blender_assets.cats.txt";
+  BLI_file_touch(filepath.c_str());
+  return filepath;
+}
+
 TEST(fileops, fstream_open_string_filename)
 {
-  const std::string test_files_dir = flags_test_asset_dir();
-  if (test_files_dir.empty()) {
-    FAIL();
-  }
-
-  const std::string filepath = test_files_dir + "/asset_library/новый/blender_assets.cats.txt";
+  std::string cleanup_dir;
+  const std::string filepath = ensure_utf8_test_file(cleanup_dir);
   fstream in(filepath, std::ios_base::in);
-  ASSERT_TRUE(in.is_open()) << "could not open " << filepath;
+  EXPECT_TRUE(in.is_open()) << "could not open " << filepath;
   in.close(); /* This should not crash. */
-
-  /* Reading the file not tested here. That's deferred to `std::fstream` anyway. */
+  if (!cleanup_dir.empty()) {
+    BLI_delete(cleanup_dir.c_str(), true, false);
+  }
 }
 
 TEST(fileops, fstream_open_charptr_filename)
 {
-  const std::string test_files_dir = flags_test_asset_dir();
-  if (test_files_dir.empty()) {
-    FAIL();
-  }
-
-  const std::string filepath_str = test_files_dir + "/asset_library/новый/blender_assets.cats.txt";
+  std::string cleanup_dir;
+  const std::string filepath_str = ensure_utf8_test_file(cleanup_dir);
   const char *filepath = filepath_str.c_str();
   fstream in(filepath, std::ios_base::in);
-  ASSERT_TRUE(in.is_open()) << "could not open " << filepath;
+  EXPECT_TRUE(in.is_open()) << "could not open " << filepath;
   in.close(); /* This should not crash. */
-
-  /* Reading the file not tested here. That's deferred to `std::fstream` anyway. */
+  if (!cleanup_dir.empty()) {
+    BLI_delete(cleanup_dir.c_str(), true, false);
+  }
 }
 
 /*

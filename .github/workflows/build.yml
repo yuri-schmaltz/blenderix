@@ -23,6 +23,7 @@ jobs:
             libx11-dev libxxf86vm-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev \
             libgl-dev libepoxy-dev libfreetype-dev libpng-dev libjpeg-dev zlib1g-dev libzstd-dev \
             libtbb-dev libgmp-dev \
+            libgtest-dev libgmock-dev libgflags-dev libgoogle-glog-dev \
             libfmt-dev libopenexr-dev libtiff-dev libopenjp2-7-dev libwebp-dev libheif-dev robin-map-dev libopencolorio-dev libbrotli-dev libpugixml-dev \
             && sudo mkdir -p /include /usr/include/opencv4
 
@@ -49,6 +50,7 @@ jobs:
             -DEigen3_DIR="$RUNNER_TEMP/eigen/share/eigen3/cmake" \
             -DOpenImageIO_DIR="$RUNNER_TEMP/openimageio/lib/cmake/OpenImageIO" \
             '-DCMAKE_INSTALL_RPATH=$ORIGIN/lib' \
+            -DWITH_GTESTS=ON \
             -DWITH_MOD_REMESH=ON \
             -DWITH_INSTALL_PORTABLE=ON \
             -DWITH_LIBS_PRECOMPILED=OFF \
@@ -97,6 +99,9 @@ jobs:
         run: |
           cmake --build ../build --target bf_intern_dualcon --parallel
           cmake --build ../build --parallel
+
+      - name: Run C++ unit tests
+        run: ctest --test-dir ../build --output-on-failure --timeout 120
 
       - name: Test installed application
         run: |

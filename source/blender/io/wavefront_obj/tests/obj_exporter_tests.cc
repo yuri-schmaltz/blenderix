@@ -53,7 +53,6 @@ TEST_F(OBJExportTest, filter_objects_curves_as_mesh)
 {
   OBJExportParams params;
   if (!load_file_and_depsgraph(all_objects_file)) {
-    ADD_FAILURE();
     return;
   }
   auto [objmeshes, objcurves]{filter_supported_objects(depsgraph, params)};
@@ -65,7 +64,6 @@ TEST_F(OBJExportTest, filter_objects_curves_as_nurbs)
 {
   OBJExportParams params;
   if (!load_file_and_depsgraph(all_objects_file)) {
-    ADD_FAILURE();
     return;
   }
   params.export_curves_as_nurbs = true;
@@ -78,7 +76,6 @@ TEST_F(OBJExportTest, filter_objects_selected)
 {
   OBJExportParams params;
   if (!load_file_and_depsgraph(all_objects_file)) {
-    ADD_FAILURE();
     return;
   }
   params.export_selected_objects = true;

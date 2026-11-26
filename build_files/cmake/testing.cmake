@@ -64,10 +64,7 @@ function(blender_src_gtest_ex)
       ${_current_include_directories}
       ${CMAKE_SOURCE_DIR}/tests/gtests
     )
-    set(TEST_INC_SYS
-      ${CMAKE_SOURCE_DIR}/extern/gtest/include
-      ${CMAKE_SOURCE_DIR}/extern/gmock/include
-    )
+    set(TEST_INC_SYS "")
     unset(_current_include_directories)
     if(WIN32 AND NOT WITH_WINDOWS_EXTERNAL_MANIFEST)
       set(MANIFEST "${CMAKE_BINARY_DIR}/tests.exe.manifest")
@@ -76,7 +73,17 @@ function(blender_src_gtest_ex)
     endif()
 
     add_executable(${TARGET_NAME} ${ARG_SRC} ${MANIFEST})
+    set_target_properties(${TARGET_NAME} PROPERTIES SKIP_BUILD_RPATH FALSE)
+    if(UNIX AND NOT APPLE AND NOT WITH_STRICT_BLENDER_LINK)
+      target_link_options(${TARGET_NAME} PRIVATE "-Wl,--unresolved-symbols=ignore-all")
+    endif()
+    if(DEFINED OPENIMAGEIO_LIBPATH)
+      set_property(TARGET ${TARGET_NAME} APPEND PROPERTY BUILD_RPATH "${OPENIMAGEIO_LIBPATH}")
+    elseif(TARGET OpenImageIO::OpenImageIO)
+      set_property(TARGET ${TARGET_NAME} APPEND PROPERTY BUILD_RPATH "$<TARGET_FILE_DIR:OpenImageIO::OpenImageIO>")
+    endif()
     setup_platform_linker_flags(${TARGET_NAME})
+    setup_platform_linker_symbol_hiding(${TARGET_NAME})
     target_include_directories(${TARGET_NAME} PUBLIC "${TEST_INC}")
     target_include_directories(${TARGET_NAME} SYSTEM PUBLIC "${TEST_INC_SYS}")
     blender_link_libraries(${TARGET_NAME} "${ARG_EXTRA_LIBS};${PLATFORM_LINKLIBS}")
@@ -90,7 +97,7 @@ function(blender_src_gtest_ex)
       endif()
     endif()
     target_link_libraries(${TARGET_NAME} PRIVATE
-                          bf_testing_main
+                          $<LINK_LIBRARY:WHOLE_ARCHIVE,bf_testing_main>
                           bf_intern_eigen
                           bf_intern_guardedalloc
                           extern_gtest
@@ -127,9 +134,6 @@ function(blender_add_ctests)
   if(ARGC LESS 1)
     message(FATAL_ERROR "No arguments supplied to blender_add_ctests()")
   endif()
-  if(NOT EXISTS "${CMAKE_SOURCE_DIR}/tests/files/render")
-    return()
-  endif()
 
   # Parse the arguments
   set(oneValueArgs DISCOVER_TESTS TARGET SUITE_NAME)
@@ -148,6 +152,17 @@ function(blender_add_ctests)
     endif()
   endif()
 
+  if(NOT EXISTS "${_test_release_dir}/datafiles" AND EXISTS "${CMAKE_SOURCE_DIR}/release/datafiles")
+    set(_test_release_dir "${CMAKE_SOURCE_DIR}/release")
+  endif()
+  set(_test_work_dir "${TEST_INSTALL_DIR}")
+  if(NOT EXISTS "${_test_work_dir}")
+    set(_test_work_dir "${CMAKE_BINARY_DIR}")
+  endif()
+  set(_test_extra_args --test-release-dir "${_test_release_dir}")
+  if(EXISTS "${CMAKE_SOURCE_DIR}/tests/files")
+    list(APPEND _test_extra_args --test-assets-dir "${CMAKE_SOURCE_DIR}/tests/files")
+  endif()
   # Define a test case with our custom gtest_add_tests() command.
   if(${ARGS_DISCOVER_TESTS})
     include(GTest)
@@ -155,18 +170,16 @@ function(blender_add_ctests)
       TARGET ${ARGS_TARGET}
       SOURCES "${ARGS_SOURCES}"
       TEST_PREFIX ${ARGS_SUITE_NAME}
-      WORKING_DIRECTORY "${TEST_INSTALL_DIR}"
+      WORKING_DIRECTORY "${_test_work_dir}"
       EXTRA_ARGS
-        --test-assets-dir "${CMAKE_SOURCE_DIR}/tests/files"
-        --test-release-dir "${_test_release_dir}"
+        ${_test_extra_args}
     )
   else()
     add_test(
       NAME ${ARGS_SUITE_NAME}
       COMMAND ${ARGS_TARGET}
-        --test-assets-dir "${CMAKE_SOURCE_DIR}/tests/files"
-        --test-release-dir "${_test_release_dir}"
-      WORKING_DIRECTORY ${TEST_INSTALL_DIR}
+        ${_test_extra_args}
+      WORKING_DIRECTORY "${_test_work_dir}"
     )
   endif()
   blender_test_set_envvars("${ARGS_SUITE_NAME}" "")
@@ -208,10 +221,7 @@ function(blender_add_test_suite_lib
     list(APPEND includes
       ${CMAKE_SOURCE_DIR}/tests/gtests
     )
-    list(APPEND includes_sys
-      ${CMAKE_SOURCE_DIR}/extern/gtest/include
-      ${CMAKE_SOURCE_DIR}/extern/gmock/include
-    )
+
     list(APPEND library_deps
       bf::dependencies::gflags
       bf::dependencies::glog

@@ -568,8 +568,9 @@ endif()
 
 # Handle REQUIRED / QUIET optional arguments.
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(GFLAGS DEFAULT_MSG
+find_package_handle_standard_args(Gflags DEFAULT_MSG
   GFLAGS_INCLUDE_DIRS GFLAGS_LIBRARIES GFLAGS_NAMESPACE)
+set(GFLAGS_FOUND ${Gflags_FOUND})
 
 # Only mark internal variables as advanced if we found gflags, otherwise
 # leave them visible in the standard GUI for the user to set manually.

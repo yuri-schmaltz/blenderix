@@ -521,8 +521,8 @@ option(WITH_KTX "Enable KTX texture support (used by the glTF add-on)" ON)
 option(WITH_LIBMV "Enable Libmv structure from motion library" ON)
 
 # Logging/unit test libraries.
-option(WITH_SYSTEM_GFLAGS "Use system-wide Gflags instead of a bundled one" OFF)
-option(WITH_SYSTEM_GLOG "Use system-wide Glog instead of a bundled one" OFF)
+option(WITH_SYSTEM_GFLAGS "Use system-wide Gflags instead of a bundled one" ON)
+option(WITH_SYSTEM_GLOG "Use system-wide Glog instead of a bundled one" ON)
 mark_as_advanced(WITH_SYSTEM_GFLAGS)
 mark_as_advanced(WITH_SYSTEM_GLOG)
 
@@ -2464,6 +2464,17 @@ endif()
 
 include(build_files/cmake/testing.cmake)
 
+if(WITH_GTESTS)
+  enable_testing()
+  find_package(GTest CONFIG REQUIRED)
+  if(NOT TARGET extern_gtest)
+    add_library(extern_gtest ALIAS GTest::gtest)
+  endif()
+  if(NOT TARGET extern_gmock)
+    add_library(extern_gmock ALIAS GTest::gmock)
+  endif()
+endif()
+
 # -----------------------------------------------------------------------------
 # Add Sub-Directories
 
@@ -2485,6 +2496,10 @@ endif()
 
 # -----------------------------------------------------------------------------
 # Add Testing Directory
+
+if(WITH_GTESTS)
+  add_subdirectory(tests/gtests)
+endif()
 
 
 
