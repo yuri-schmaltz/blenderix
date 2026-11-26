@@ -1,0 +1,142 @@
+# SPDX-FileCopyrightText: 2006 Blender Authors
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+set(INC
+  .
+  intern
+  intern/lineart
+  ../editors/include
+  ../makesrna
+  ../../../intern/eigen
+
+  # RNA_prototypes.hh
+  ${CMAKE_BINARY_DIR}/source/blender/makesrna
+)
+
+set(INC_SYS
+)
+
+set(SRC
+  intern/MOD_array.cc
+  intern/MOD_bevel.cc
+  intern/MOD_boolean.cc
+  intern/MOD_build.cc
+  intern/MOD_cast.cc
+  intern/MOD_correctivesmooth.cc
+  intern/MOD_datatransfer.cc
+  intern/MOD_decimate.cc
+  intern/MOD_displace.cc
+  intern/MOD_edgesplit.cc
+  intern/MOD_hook.cc
+  intern/MOD_laplaciandeform.cc
+  intern/MOD_laplaciansmooth.cc
+  intern/MOD_mask.cc
+  intern/MOD_meshdeform.cc
+  intern/MOD_mirror.cc
+  intern/MOD_multires.cc
+  intern/MOD_none.cc
+  intern/MOD_normal_edit.cc
+  intern/MOD_remesh.cc
+  intern/MOD_screw.cc
+  intern/MOD_shapekey.cc
+  intern/MOD_shrinkwrap.cc
+  intern/MOD_simpledeform.cc
+  intern/MOD_skin.cc
+  intern/MOD_smooth.cc
+  intern/MOD_solidify.cc
+  intern/MOD_solidify_extrude.cc
+  intern/MOD_solidify_nonmanifold.cc
+  intern/MOD_subsurf.cc
+  intern/MOD_surfacedeform.cc
+  intern/MOD_triangulate.cc
+  intern/MOD_ui_common.cc
+  intern/MOD_util.cc
+  intern/MOD_warp.cc
+  intern/MOD_wave.cc
+  intern/MOD_weighted_normal.cc
+  intern/MOD_weightvg_util.cc
+  intern/MOD_weightvgedit.cc
+  intern/MOD_weightvgmix.cc
+  intern/MOD_weightvgproximity.cc
+  intern/MOD_weld.cc
+  intern/MOD_wireframe.cc
+
+  MOD_modifiertypes.hh
+  MOD_nodes.hh
+  intern/MOD_solidify_util.hh
+  intern/MOD_ui_common.hh
+  intern/MOD_util.hh
+  intern/MOD_weightvg_util.hh
+)
+
+set(LIB
+  PRIVATE bf::blenfont
+  PRIVATE bf::blenkernel
+  PRIVATE bf::blenlib
+  PRIVATE bf::blenloader
+  PRIVATE bf::blentranslation
+  PRIVATE bf::bmesh
+  PRIVATE bf::depsgraph
+  PUBLIC bf::dna
+  PRIVATE bf::functions
+  PRIVATE bf::geometry
+  PRIVATE bf::imbuf
+  PRIVATE bf::intern::guardedalloc
+  PRIVATE bf::extern::xxhash
+  PRIVATE bf::nodes
+  PRIVATE bf::render
+  PRIVATE bf::windowmanager
+  PRIVATE bf::dependencies::zlib
+  PRIVATE bf::dependencies::optional::gmp
+  PRIVATE bf::dependencies::optional::bullet
+  PRIVATE bf::dependencies::optional::opensubdiv
+)
+
+if(WITH_ALEMBIC)
+  add_definitions(-DWITH_ALEMBIC)
+  list(APPEND LIB
+    bf_io_alembic
+  )
+endif()
+
+if(WITH_USD)
+  add_definitions(-DWITH_USD)
+  list(APPEND LIB
+    bf_io_usd
+  )
+endif()
+
+if(WITH_MOD_REMESH)
+  list(APPEND INC
+    ../../../intern/dualcon
+  )
+  list(APPEND LIB
+    bf_intern_dualcon
+  )
+  add_definitions(-DWITH_MOD_REMESH)
+endif()
+
+if(WITH_MOD_FLUID)
+  add_definitions(-DWITH_FLUID)
+endif()
+
+if(WITH_MOD_OCEANSIM)
+  add_definitions(-DWITH_OCEANSIM)
+endif()
+
+# To disable adaptive subdivision test in subdivision-surface UI without cycles.
+if(WITH_CYCLES)
+  add_definitions(-DWITH_CYCLES)
+endif()
+
+if(WITH_EXPERIMENTAL_FEATURES)
+  add_definitions(-DWITH_SIMULATION_DATABLOCK)
+endif()
+
+# So we can have special tricks in modifier system.
+
+blender_add_lib(bf_modifiers "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
+
+# RNA_prototypes.hh
+add_dependencies(bf_modifiers bf_rna)

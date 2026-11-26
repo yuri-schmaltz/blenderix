@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2006 Blender Authors
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+# Libs that adhere to strict flags
+add_subdirectory(fast_float)
+add_subdirectory(json)
+add_subdirectory(toml11)
+if(WITH_IO_FBX)
+  add_subdirectory(ufbx)
+endif()
+
+# Otherwise we get warnings here that we can't fix in external projects
+remove_strict_flags()
+
+# Not a strict flag, but noisy for code we don't maintain
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  remove_c_and_cxx_flag(
+    "-Wextra"
+    "-Wmisleading-indentation"
+  )
+elseif(CMAKE_C_COMPILER_ID MATCHES "Clang")
+  remove_c_and_cxx_flag(
+    "-Weverything"
+    "-Wextra"
+    "-Wnull-pointer-subtraction"
+    "-Wcast-function-type-mismatch"
+    "-Wignored-qualifiers"
+  )
+endif()
+
+if(WITH_COMPILER_ASAN AND NOT WITH_COMPILER_ASAN_EXTERN)
+  # Not only does MSVC not have an -fno-sanitize=all option, if you remove the /fsanitize=address
+  # flag at this point, it will give a linker error as it generates an ODR violation for some
+  # vector classes, for details see :
+  # https://learn.microsoft.com/en-us/cpp/sanitizers/error-container-overflow?view=msvc-170
+  if(NOT MSVC)
+    # Disable ASAN for extern dependencies, as it can lead to linking issues due to too large binaries.
+    string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -fno-sanitize=all")
+    string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -fno-sanitize=all")
+    string(APPEND CMAKE_CXX_FLAGS_DEBUG " -fno-sanitize=all")
+    string(APPEND CMAKE_C_FLAGS_DEBUG " -fno-sanitize=all")
+  endif()
+endif()
+
+
+add_subdirectory(rangetree)
+add_subdirectory(nanosvg)
+add_subdirectory(wcwidth)
+add_subdirectory(xxhash)
+add_subdirectory(md4c)
+
+if(WITH_BINRELOC)
+  add_subdirectory(binreloc)
+endif()
+
+if(WITH_GHOST_X11 AND WITH_GHOST_XDND)
+  add_subdirectory(xdnd)
+endif()
+
+if(WITH_QUADRIFLOW)
+  set(QUADRIFLOW_CMAKE_CFG ${CMAKE_CURRENT_SOURCE_DIR}/quadriflow/blender_config.cmake)
+  add_subdirectory(quadriflow)
+endif()
+
+if(WITH_VULKAN_BACKEND)
+  add_subdirectory(vulkan_memory_allocator)
+  add_subdirectory(volk)
+endif()

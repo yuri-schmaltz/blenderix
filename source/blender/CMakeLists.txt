@@ -1,0 +1,198 @@
+# SPDX-FileCopyrightText: 2006 Blender Authors
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+set(SRC_DNA_INC
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_ID.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_ID_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_action_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_anim_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_anim_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_armature_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_asset_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_attribute_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_boid_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_brush_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_brush_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_cachefile_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_camera_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_cloth_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_collection_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_color_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_colorband_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_constraint_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_curve_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_curve_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_curveprofile_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_curves_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_customdata_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_defs.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_documentation.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_dynamicpaint_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_effect_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_fileglobal_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_fluid_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_freestyle_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_gpencil_legacy_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_gpu_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_grease_pencil_modifier_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_grease_pencil_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_image_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_image_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_key_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_lattice_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_layer_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_light_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_lightprobe_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_lineart_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_linestyle_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_listBase.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_mask_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_material_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_mesh_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_meshdata_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_meta_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_modifier_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_modifier_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_movieclip_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_nla_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_node_tree_interface_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_node_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_object_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_object_fluidsim_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_object_force_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_object_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_outliner_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_packedFile_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_particle_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_pointcache_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_pointcloud_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_rigidbody_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_scene_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_scene_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_screen_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_sdna_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_sequence_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_session_uid_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_sound_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_space_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_space_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_speaker_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_text_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_texture_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_theme_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_tracking_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_userdef_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_userdef_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_uuid_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_vec_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_vfont_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_view2d_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_view3d_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_view3d_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_viewer_path_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_volume_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_windowmanager_enums.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_windowmanager_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_workspace_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_world_types.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_xr_types.h
+)
+
+# Utility & other headers.
+set(SRC_DNA_OTHER_INC
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_array_utils.hh
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_print.hh
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_sdna_pointers.hh
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_sdna_type_ids.hh
+  ${CMAKE_CURRENT_SOURCE_DIR}/makesdna/DNA_vec_defaults.h
+)
+
+add_subdirectory(datatoc)
+add_subdirectory(gpu/shader_tool)
+add_subdirectory(editors)
+add_subdirectory(windowmanager)
+add_subdirectory(blenkernel)
+add_subdirectory(blenlib)
+add_subdirectory(bmesh)
+add_subdirectory(draw)
+add_subdirectory(draw/intern/shaders)
+add_subdirectory(draw/engines/overlay/shaders)
+add_subdirectory(draw/engines/workbench/shaders)
+add_subdirectory(draw/engines/select/shaders)
+add_subdirectory(blenfont)
+add_subdirectory(blentranslation)
+add_subdirectory(blenloader)
+add_subdirectory(blenloader_core)
+add_subdirectory(depsgraph)
+add_subdirectory(geometry)
+add_subdirectory(gpu)
+add_subdirectory(gpu/shaders)
+add_subdirectory(gpu/shaders/nodes)
+add_subdirectory(gpu/tests/shaders)
+add_subdirectory(imbuf)
+add_subdirectory(imbuf/intern/oiio)
+add_subdirectory(imbuf/intern/openexr)
+add_subdirectory(modifiers)
+add_subdirectory(io)
+add_subdirectory(makesdna)
+add_subdirectory(makesrna)
+
+if(WITH_BLENDER_THUMBNAILER)
+endif()
+
+if(WITH_IMAGE_CINEON)
+  add_subdirectory(imbuf/intern/cineon)
+endif()
+
+if(WITH_PYTHON)
+  add_subdirectory(python)
+endif()
+
+if(WITH_CPU_CHECK)
+  add_subdirectory(cpucheck)
+endif()
+
+foreach(_stub_target
+  bf_animrig
+  bf_asset_system
+  bf_compositor
+  bf_freestyle
+  bf_functions
+  bf_ikplugin
+  bf_nodes
+  bf_render
+  bf_sequencer
+  bf_shader_fx
+  bf_simulation
+)
+  if(NOT TARGET ${_stub_target})
+    add_library(${_stub_target} INTERFACE)
+    string(REGEX REPLACE "^bf_" "" _stub_dir "${_stub_target}")
+    if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${_stub_dir}")
+      target_include_directories(${_stub_target} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/${_stub_dir}")
+    endif()
+    string(REGEX REPLACE "^bf_" "bf::" _stub_alias "${_stub_target}")
+    add_library(${_stub_alias} ALIAS ${_stub_target})
+  endif()
+endforeach()
+target_include_directories(bf_nodes INTERFACE
+  "${CMAKE_CURRENT_SOURCE_DIR}/nodes/function/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/nodes/geometry/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/nodes/shader/include"
+)
+if(NOT TARGET extern_curve_fit_nd)
+  add_library(extern_curve_fit_nd INTERFACE)
+  target_include_directories(extern_curve_fit_nd INTERFACE "${CMAKE_SOURCE_DIR}/extern/curve_fit_nd")
+  add_library(bf::extern::curve_fit_nd ALIAS extern_curve_fit_nd)
+endif()
+if(NOT TARGET bf_nodes_shader)
+  add_library(bf_nodes_shader INTERFACE)
+  target_include_directories(bf_nodes_shader INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/nodes/shader/include")
+  add_library(bf::nodes::shader ALIAS bf_nodes_shader)
+endif()
+if(NOT TARGET bf_intern_optional_openvdb)
+  add_library(bf_intern_optional_openvdb INTERFACE)
+  target_include_directories(bf_intern_optional_openvdb INTERFACE "${CMAKE_SOURCE_DIR}/intern/openvdb")
+  add_library(bf::intern::optional::openvdb ALIAS bf_intern_optional_openvdb)
+endif()

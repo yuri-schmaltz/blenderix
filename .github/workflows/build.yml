@@ -1,0 +1,91 @@
+name: Mesh-Only Build (main)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          lfs: false
+
+      - name: Install minimal Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build build-essential gcc-14 g++-14 python3-dev \
+            libx11-dev libxxf86vm-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev \
+            libgl-dev libepoxy-dev libfreetype-dev libpng-dev libjpeg-dev zlib1g-dev libzstd-dev \
+            libtbb-dev libgmp-dev libeigen3-dev \
+            libfmt-dev libopenexr-dev libopenimageio-dev openimageio-tools libopencolorio-dev libbrotli-dev libpugixml-dev \
+            && sudo mkdir -p /include /usr/include/opencv4
+
+      - name: Configure CMake (mesh-only)
+        run: |
+          OCIO_CMAKE=$(find /usr -iname "OpenColorIOConfig.cmake" -o -iname "opencolorio-config.cmake" 2>/dev/null | head -n1)
+          EXTRA_CMAKE_ARGS=""
+          if [ -n "$OCIO_CMAKE" ]; then
+            EXTRA_CMAKE_ARGS="-DOpenColorIO_DIR=$(dirname "$OCIO_CMAKE")"
+          fi
+          cmake -S . -B ../build -G Ninja \
+            -DCMAKE_C_COMPILER=gcc-14 \
+            -DCMAKE_CXX_COMPILER=g++-14 \
+            -DPYTHON_VERSION=3.14 \
+            -DWITH_LIBS_PRECOMPILED=OFF \
+            -DWITH_EMBREE=OFF \
+            -DWITH_MANIFOLD=OFF \
+            -DWITH_VULKAN_BACKEND=OFF \
+            -DWITH_OPENSUBDIV=OFF \
+            -DWITH_PYTHON_INSTALL=OFF \
+            -DWITH_CYCLES=OFF \
+            -DWITH_MOD_FLUID=OFF \
+            -DWITH_MOD_OCEANSIM=OFF \
+            -DWITH_FREESTYLE=OFF \
+            -DWITH_AUDASPACE=OFF \
+            -DWITH_CODEC_FFMPEG=OFF \
+            -DWITH_CODEC_SNDFILE=OFF \
+            -DWITH_ALEMBIC=OFF \
+            -DWITH_USD=OFF \
+            -DWITH_HYDRA=OFF \
+            -DWITH_MATERIALX=OFF \
+            -DWITH_LIBMV=OFF \
+            -DWITH_XR_OPENXR=OFF \
+            -DWITH_BULLET=OFF \
+            -DWITH_JOLT=OFF \
+            -DWITH_OPENVDB=OFF \
+            -DWITH_NANOVDB=OFF \
+            -DWITH_OPENIMAGEDENOISE=OFF \
+            -DWITH_OPENTIMELINEIO=OFF \
+            -DWITH_IO_GREASE_PENCIL=OFF \
+            -DWITH_IO_SPZ=OFF \
+            -DWITH_UV_SLIM=OFF \
+            -DWITH_IK_SOLVER=OFF \
+            -DWITH_IK_ITASC=OFF \
+            -DWITH_POTRACE=OFF \
+            -DWITH_HARU=OFF \
+            -DWITH_PUGIXML=OFF \
+            -DWITH_FFTW3=OFF \
+            -DWITH_BLENDER_THUMBNAILER=OFF \
+            -DWITH_INTERNATIONAL=OFF \
+            -DWITH_DRACO=OFF \
+            -DWITH_KTX=OFF \
+            -DWITH_MESHOPTIMIZER=OFF \
+            -DWITH_QUADRIFLOW=OFF \
+            $EXTRA_CMAKE_ARGS
+
+      - name: Build
+        run: |
+          cmake --build ../build -j$(nproc)
+
+      - name: Upload Blender binary artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blender-mesh-only-linux
+          path: ../build/bin/

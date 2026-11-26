@@ -1,0 +1,8 @@
+Project: fast_float
+URL: https://github.com/fastfloat/fast_float
+License: SPDX:MIT
+Upstream version: 8.3.2 (42f2548, 2026 Oct)
+Copyright: "Copyright 2023 The Wuffs Authors; Copyright (c) 2021 The fast_float authors"
+Local modifications:
+
+- Took only the fast_float.h header and the license/readme files

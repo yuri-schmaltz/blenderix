@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2009-2023 Blender Authors
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+from __future__ import annotations
+
+# support reloading sub-modules
+if "bpy" in locals():
+    from importlib import reload
+    _modules_loaded[:] = [reload(val) for val in _modules_loaded]
+    del reload
+
+_modules = [
+    "add_mesh_torus",
+    "copy_global_transform",
+    "file",
+    "mesh",
+    "object",
+    "object_align",
+    "object_randomize_transform",
+    "presets",
+    "userpref",
+    "view3d",
+    "wm",
+]
+
+import bpy
+
+__import__(name=__name__, fromlist=_modules)
+_namespace = globals()
+_modules_loaded = [_namespace[name] for name in _modules]
+del _namespace
+
+
+def register():
+    from bpy.utils import register_class
+    from . import (
+        copy_global_transform,
+    )
+
+    for mod in _modules_loaded:
+        for cls in mod.classes:
+            try:
+                register_class(cls)
+            except Exception:
+                pass
+
+    copy_global_transform.register()
+
+
+def unregister():
+    from bpy.utils import unregister_class
+    from . import (
+        copy_global_transform,
+    )
+
+    copy_global_transform.unregister()
+
+    for mod in reversed(_modules_loaded):
+        for cls in reversed(mod.classes):
+            if cls.is_registered:
+                unregister_class(cls)

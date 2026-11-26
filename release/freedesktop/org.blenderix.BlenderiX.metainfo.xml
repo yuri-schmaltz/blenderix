@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+    <id>org.blenderix.BlenderiX</id>
+    <launchable type="desktop-id">blenderix.desktop</launchable>
+    <name>BlenderiX</name>
+    <summary>3D modeling application based on Blender</summary>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0</project_license>
+    <description>
+        <p>BlenderiX provides a focused workspace for creating and editing 3D models.</p>
+    </description>
+    <releases>
+        <release version="1.0"/>
+    </releases>
+</component>

@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2014-2023 Blender Authors
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+# Turn everything ON that's expected for an official release builds.
+#
+# Example usage:
+#   cmake -C../blender/build_files/cmake/config/blender_release.cmake  ../blender
+#
+# NOTE: the build-bot supports configuration overrides for some of these settings.
+# This means the daily-builds may not match this configuration *exactly*,
+# see: `build_files/buildbot/config/*.cmake`.
+
+set(WITH_ALEMBIC             ON  CACHE BOOL "" FORCE)
+set(WITH_BUILDINFO           ON  CACHE BOOL "" FORCE)
+set(WITH_BULLET              ON  CACHE BOOL "" FORCE)
+set(WITH_EMBREE              ON  CACHE BOOL "" FORCE)
+set(WITH_DRACO               ON  CACHE BOOL "" FORCE)
+set(WITH_MESHOPTIMIZER       ON  CACHE BOOL "" FORCE)
+set(WITH_KTX                 ON  CACHE BOOL "" FORCE)
+set(WITH_FFTW3               ON  CACHE BOOL "" FORCE)
+set(WITH_GMP                 ON  CACHE BOOL "" FORCE)
+set(WITH_HARU                ON  CACHE BOOL "" FORCE)
+set(WITH_IK_ITASC            ON  CACHE BOOL "" FORCE)
+set(WITH_IK_SOLVER           ON  CACHE BOOL "" FORCE)
+set(WITH_IMAGE_CINEON        ON  CACHE BOOL "" FORCE)
+set(WITH_IMAGE_OPENJPEG      ON  CACHE BOOL "" FORCE)
+set(WITH_IMAGE_WEBP          ON  CACHE BOOL "" FORCE)
+set(WITH_INPUT_NDOF          ON  CACHE BOOL "" FORCE)
+set(WITH_INPUT_IME           ON  CACHE BOOL "" FORCE)
+set(WITH_INTERNATIONAL       ON  CACHE BOOL "" FORCE)
+set(WITH_IO_FBX              ON  CACHE BOOL "" FORCE)
+set(WITH_IO_GREASE_PENCIL    ON  CACHE BOOL "" FORCE)
+set(WITH_IO_PLY              ON  CACHE BOOL "" FORCE)
+set(WITH_IO_STL              ON  CACHE BOOL "" FORCE)
+set(WITH_IO_SPZ              ON  CACHE BOOL "" FORCE)
+set(WITH_IO_WAVEFRONT_OBJ    ON  CACHE BOOL "" FORCE)
+set(WITH_JOLT                ON  CACHE BOOL "" FORCE)
+set(WITH_MANIFOLD            ON  CACHE BOOL "" FORCE)
+set(WITH_MOD_FLUID           ON  CACHE BOOL "" FORCE)
+set(WITH_MOD_OCEANSIM        ON  CACHE BOOL "" FORCE)
+set(WITH_MOD_REMESH          ON  CACHE BOOL "" FORCE)
+set(WITH_UV_SLIM             ON  CACHE BOOL "" FORCE)
+set(WITH_NANOVDB             ON  CACHE BOOL "" FORCE)
+set(WITH_OPENIMAGEDENOISE    ON  CACHE BOOL "" FORCE)
+set(WITH_OPENSUBDIV          ON  CACHE BOOL "" FORCE)
+set(WITH_OPENVDB             ON  CACHE BOOL "" FORCE)
+set(WITH_OPENVDB_BLOSC       ON  CACHE BOOL "" FORCE)
+set(WITH_POTRACE             ON  CACHE BOOL "" FORCE)
+set(WITH_PUGIXML             ON  CACHE BOOL "" FORCE)
+set(WITH_PYTHON_INSTALL      ON  CACHE BOOL "" FORCE)
+set(WITH_QUADRIFLOW          ON  CACHE BOOL "" FORCE)
+set(WITH_TBB                 ON  CACHE BOOL "" FORCE)
+set(WITH_USD                 ON  CACHE BOOL "" FORCE)
+set(WITH_MATERIALX           ON  CACHE BOOL "" FORCE)
+set(WITH_XR_OPENXR           ON  CACHE BOOL "" FORCE)
+
+set(WITH_ASSERT_ABORT        OFF CACHE BOOL "" FORCE)
+
+# platform dependent options
+if(APPLE)
+  set(WITH_BLENDER_THUMBNAILER ON  CACHE BOOL "" FORCE)
+endif()
+if(UNIX AND NOT APPLE)
+  set(WITH_DOC_MANPAGE         ON  CACHE BOOL "" FORCE)
+  set(WITH_GHOST_XDND          ON  CACHE BOOL "" FORCE)
+  set(WITH_X11_XINPUT          ON  CACHE BOOL "" FORCE)
+  # TODO don't disable pipewire on release builds once it has gotten more testing
+endif()
+
+if(NOT APPLE)
+  set(WITH_DLSS                   ON  CACHE BOOL "" FORCE)
+
+  set(_is_win32_arm64_target OFF)
+  if(WIN32)
+    if(DEFINED ENV{VSCMD_ARG_TGT_ARCH})
+      if("$ENV{VSCMD_ARG_TGT_ARCH}" STREQUAL "arm64")
+        # Can't use `CMAKE_SYSTEM_PROCESSOR` here as it's not set yet,
+        # so fall back to checking the environment for vcvarsall's `VSCMD_ARG_TGT_ARCH`.
+        set(_is_win32_arm64_target ON)
+      endif()
+    endif()
+  endif()
+  if(NOT _is_win32_arm64_target)
+    set(WITH_TBB_MALLOC_PROXY ON CACHE BOOL "" FORCE)
+  endif()
+  unset(_is_win32_arm64_target)
+endif()

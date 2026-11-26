@@ -1,0 +1,93 @@
+/* SPDX-FileCopyrightText: 2023 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
+
+/** \file
+ * \ingroup editors
+ */
+
+#pragma once
+
+#include "BLI_compiler_attrs.hh"
+
+#include "BKE_scene.hh"
+
+namespace blender {
+
+struct ReportList;
+struct bContext;
+struct wmWindow;
+struct Strip;
+
+/**
+ * Replace the given scene (assumed to be an active scene) by another suitable one.
+ *
+ * Checks if the given active scene can actually be deleted.
+ *
+ * Also ensures that all needed updates in WM and UI code is done.
+ *
+ * \param scene: The scene to be replaced, often the active scene but may be any scene.
+ * \param scene_new: When non-null, this scene is used as a replacement for `scene`.
+ *                   Otherwise, #BKE_scene_find_replacement() is used to find a replacement.
+ * \return true if the given `scene` was successfully replaced and can safely be deleted.
+ */
+bool ED_scene_replace_active_for_deletion(bContext &C,
+                                          Main &bmain,
+                                          Scene &scene,
+                                          Scene *scene_new = nullptr);
+/**
+ * Depsgraph updates after scene becomes active in a window.
+ */
+void ED_scene_change_update(Main *bmain, Scene *scene, ViewLayer *layer) ATTR_NONNULL();
+/* The preview range takes precedence. Otherwise, if #WORKSPACE_SYNC_SCENE_TIME is set and the
+ * scene is used in a video sequencer in that workspace, then the strip's playback range is used.
+ * Else fall back to the scene's playback range, see #BKE_scene_get_playback_range. */
+ScenePlaybackRange ED_scene_get_effective_playback_range(const bContext &C, const Scene *scene);
+
+/**
+ * Clamps the current frame to the effective playback bounds. The preview range takes precedence;
+ * otherwise, if the scene is used in a video sequencer and the sequencer editor is visible
+ * in the workspace, the bounds are defined by the scene strip in the sequencer.
+ *
+ * To get playback bounds that do not depend on the workspace, use
+ * #BKE_scene_frame_clamp_for_playback.
+ */
+void ED_scene_frame_clamp_for_playback(const bContext &C, Scene *scene, bool is_playing_forward);
+
+/* -------------------------------------------------------------------- */
+/** \name Scene FPS Management
+ * \{ */
+
+struct SceneFPS_State {
+  float fps_average;
+  float fps_target;
+  bool fps_target_is_fractional;
+};
+
+/**
+ * Update frame rate info for viewport drawing.
+ * \param ltime: Time since the last update,
+ * compatible with the result of #BLI_time_now_seconds.
+ */
+void ED_scene_fps_average_accumulate(Scene *scene, short fps_samples, double ltime)
+    ATTR_NONNULL(1);
+/**
+ * Calculate an average (if it's not already calculated).
+ * \return false on failure otherwise all values in `state` are initialized.
+ */
+bool ED_scene_fps_average_calc(const Scene *scene, SceneFPS_State *r_state) ATTR_NONNULL(1, 2);
+/**
+ * Clear run-time data for accumulating animation playback average times.
+ */
+void ED_scene_fps_average_clear(Scene *scene) ATTR_NONNULL(1);
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Scene Compositor
+ * \{ */
+
+
+/** \} */
+
+}  // namespace blender
