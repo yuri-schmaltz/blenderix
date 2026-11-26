@@ -313,10 +313,9 @@ static void mesh_foreach_path(ID *id, BPathForeachPathData *bpath_data)
 static void mesh_foreach_working_space_color(ID *id, const IDTypeForeachColorFunctionCallback &fn)
 {
   Mesh *mesh = reinterpret_cast<Mesh *>(id);
-#if 0
-  /* In the future we'll be able to use just this. */
   mesh->attribute_storage.wrap().foreach_working_space_color(fn);
-#else
+
+  /* Older meshes can still have float colors stored as legacy CustomData layers. */
   auto convert_domain = [&fn](CustomData *customdata, size_t size) {
     for (int i = 0; i < customdata->totlayer; i++) {
       CustomDataLayer *layer = &customdata->layers[i];
@@ -332,7 +331,6 @@ static void mesh_foreach_working_space_color(ID *id, const IDTypeForeachColorFun
   convert_domain(&mesh->edge_data, mesh->edges_num);
   convert_domain(&mesh->face_data, mesh->faces_num);
   convert_domain(&mesh->corner_data, mesh->corners_num);
-#endif
 }
 
 static void mesh_blend_write(BlendWriter *writer, ID *id, const void *id_address)

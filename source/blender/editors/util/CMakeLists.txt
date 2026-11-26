@@ -16,6 +16,7 @@ set(INC_SYS
 
 set(SRC
   ed_draw.cc
+  ed_image_save.cc
   ed_transverts.cc
   ed_util.cc
   ed_util_imbuf.cc

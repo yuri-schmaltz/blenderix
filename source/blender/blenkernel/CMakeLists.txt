@@ -183,6 +183,7 @@ set(SRC
   intern/object_update.cc
   intern/outliner_treehash.cc
   intern/packedFile.cc
+  intern/paint_metadata.cc
   intern/path_templates.cc
   intern/pbvh.cc
   intern/pbvh_bmesh.cc

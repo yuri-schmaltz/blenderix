@@ -16,7 +16,6 @@
 #include "BKE_context.hh"
 #include "BKE_image.hh"
 #include "BKE_main.hh"
-#include "BKE_movieclip.hh"
 #include "BKE_report.hh"
 
 #include "DNA_windowmanager_enums.h"
@@ -34,12 +33,8 @@
 #include "BLT_translation.hh"
 
 #include "ED_image.hh"
-#include "ED_render.hh"
 
-#include "RE_pipeline.h"
 
-#include "SEQ_prefetch.hh"
-#include "SEQ_relations.hh"
 
 #include "WM_api.hh"
 #include "WM_types.hh"
@@ -103,10 +98,6 @@ static wmOperatorStatus wm_set_working_color_space_exec(bContext *C, wmOperator 
     return OPERATOR_CANCELLED;
   }
 
-  /* Stop all viewport renders. */
-  ED_render_engine_changed(bmain, true);
-  RE_FreeAllPersistentData();
-
   /* Change working space. */
   IMB_colormanagement_working_space_set_from_name(working_space);
 
@@ -121,28 +112,13 @@ static wmOperatorStatus wm_set_working_color_space_exec(bContext *C, wmOperator 
   STRNCPY_UTF8(bmain->colorspace.scene_linear_name, working_space);
   bmain->colorspace.scene_linear_to_xyz = colorspace::scene_linear_to_xyz;
 
-  /* Free render and sequencer caches. */
-  RE_FreeAllRenderResults();
-  seq::prefetch_stop_all();
-  for (Scene &scene : bmain->scenes) {
-    seq::cache_cleanup(&scene, seq::CacheCleanup::All);
-  }
-
   /* Free all images, they may have scene linear float buffers. */
   for (Image &image : bmain->images) {
     DEG_id_tag_update(&image.id, ID_RECALC_SOURCE);
     BKE_image_signal(bmain, &image, nullptr, IMA_SIGNAL_COLORMANAGE);
   }
-  for (MovieClip &clip : bmain->movieclips) {
-    BKE_movieclip_clear_cache(&clip);
-    BKE_movieclip_free_gputexture(&clip);
-    DEG_id_tag_update(&clip.id, ID_RECALC_SOURCE);
-  }
 
   /* Redraw everything. */
-  WM_main_add_notifier(NC_SCENE | ND_SEQUENCER, nullptr);
-  WM_main_add_notifier(NC_SCENE | ND_RENDER_OPTIONS, nullptr);
-  WM_main_add_notifier(NC_SCENE | ND_NODES, nullptr);
   WM_main_add_notifier(NC_WINDOW, nullptr);
 
   return OPERATOR_FINISHED;
