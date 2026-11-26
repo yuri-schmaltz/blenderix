@@ -266,13 +266,6 @@ void version_update_node_input(
 
 bNode *version_eevee_output_node_get(bNodeTree *ntree, int16_t node_type);
 
-/**
- * Allow 5.0+ to 'convert' older blend-files' system properties storage.
- */
-void version_system_idprops_generate(Main *bmain);
-void version_system_idprops_nodes_generate(Main *bmain);
-void version_system_idprops_children_bones_generate(Main *bmain);
-
 bool all_scenes_use(Main *bmain, const Span<const char *> engines);
 
 /**

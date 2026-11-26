@@ -190,36 +190,13 @@ static void rna_AnimData_slot_handle_override_diff(Main *bmain,
   rna_generic_action_slot_handle_override_diff(bmain, rnadiff_ctx, adt_a->action, adt_b->action);
 }
 
-static int rna_AnimData_action_editable(const PointerRNA *ptr, const char ** /*r_info*/)
-{
-  BLI_assert(ptr->type == RNA_AnimData);
-  AnimData *adt = static_cast<AnimData *>(ptr->data);
-  if (!adt) {
-    return PROP_EDITABLE;
-  }
-  return BKE_animdata_action_editable(adt) ? PROP_EDITABLE : PropertyFlag(0);
-}
-
 static PointerRNA rna_AnimData_action_get(PointerRNA *ptr)
 {
-  ID &animated_id = *ptr->owner_id;
-  animrig::Action *action = animrig::get_action(animated_id);
-  if (!action) {
+  const AnimData *adt = static_cast<const AnimData *>(ptr->data);
+  if (!adt || !adt->action) {
     return {};
-  };
-  return RNA_id_pointer_create(&action->id);
-}
-
-static void rna_AnimData_action_set(PointerRNA *ptr, PointerRNA value, ReportList *reports)
-{
-  using namespace animrig;
-  BLI_assert(ptr->owner_id);
-  ID &animated_id = *ptr->owner_id;
-
-  Action *action = static_cast<Action *>(value.data);
-  if (!assign_action(action, animated_id)) {
-    BKE_report(reports, RPT_ERROR, "Could not change action");
   }
+  return RNA_id_pointer_create(&adt->action->id);
 }
 
 static void rna_AnimData_tmpact_set(PointerRNA *ptr, PointerRNA value, ReportList *reports)
@@ -1656,27 +1633,12 @@ static void rna_def_animdata(BlenderRNA *brna)
 
   RNA_define_lib_overridable(true);
 
-  /* Active Action */
+  /* Expose the action stored in a legacy file without animation editing. */
   prop = RNA_def_property(srna, "action", PROP_POINTER, PROP_NONE);
   RNA_def_property_struct_type(prop, "Action");
-  /* this flag as well as the dynamic test must be defined for this to be editable... */
-  RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_REFCOUNT);
-  RNA_def_property_override_flag(prop, PROPOVERRIDE_OVERRIDABLE_LIBRARY);
-  RNA_def_property_pointer_funcs(
-      prop,
-      /* Define a getter that is NULL-safe, so that an RNA_AnimData prop with `ptr->data = nullptr`
-       * can still be used to get the property. In that case it will always return nullptr, of
-       * course, but it won't crash Blender. */
-      "rna_AnimData_action_get",
-      /* Similarly, for the setter, the NULL-safety allows constructing the AnimData struct on
-       * assignment of this "action" property. This is possible because RNA has typed NULL
-       * pointers, and thus it knows which setter to call even when `ptr->data` is NULL. */
-      "rna_AnimData_action_set",
-      nullptr,
-      "rna_Action_id_poll");
-  RNA_def_property_editable_func(prop, "rna_AnimData_action_editable");
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_pointer_funcs(prop, "rna_AnimData_action_get", nullptr, nullptr, nullptr);
   RNA_def_property_ui_text(prop, "Action", "Active Action for this data-block");
-  RNA_def_property_update(prop, NC_ANIMATION | ND_NLA_ACTCHANGE, "rna_AnimData_dependency_update");
 
   /* Active Action Settings */
   prop = RNA_def_property(srna, "action_extrapolation", PROP_ENUM, PROP_NONE);

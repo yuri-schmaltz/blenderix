@@ -11,7 +11,8 @@
 
 O fork é um **Blender enxuto para modelagem/manipulação de malhas 3D**. Tudo que não
 serve a esse objetivo foi removido (implementação), mas o **DNA/RNA/enums** foram
-mantidos. A migração legada geral foi removida e a compatibilidade precisa de testes com arquivos reais.
+mantidos. A leitura executa migrações de malha e de propriedades para arquivos
+legados. A migração legada geral continua removida.
 
 Protocolo do projeto (regra de ouro):
 
@@ -164,6 +165,11 @@ for case in mesh modifier linked mixed; do
 done
 ```
 
+A matriz passou no BlenderiX com amostras provenientes do Blender 3.6.0 e
+4.5.0. Cada versão passou pelos casos de malha, Bevel, biblioteca vinculada e
+cena mista. O caso misto preservou a malha ao abrir, salvar e reabrir
+e descartou a câmera e a animação. Esses resultados se limitam às amostras.
+
 O teste gráfico precisa de uma sessão de desktop ou de um servidor X virtual.
 Ele redesenha o viewport, edita uma malha, aplica um modificador, verifica
 importação e exportação de OBJ, STL e PLY, e reabre o arquivo salvo em outro
@@ -181,7 +187,10 @@ BLENDERIX_GUI_REOPEN=1 "$install_dir/blender" --factory-startup \
 O link ainda usa `-Wl,--unresolved-symbols=ignore-all` em
 `source/creator/CMakeLists.txt`. Referências a implementações removidas
 podem ser identificadas configurando um segundo diretório de build com as
-mesmas opções e `-DWITH_STRICT_BLENDER_LINK=ON`.
+mesmas opções e `-DWITH_STRICT_BLENDER_LINK=ON`. A primeira execução identificou
+1.883 símbolos indefinidos distintos, principalmente em código de subsistemas
+removidos. O CMake com `WITH_GTESTS=ON` gerou alvos incompletos e o CTest
+listou zero testes.
 
 ---
 

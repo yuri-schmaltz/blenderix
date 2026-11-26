@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/../build_environment/cmake/versions.cmake"
-  oiio_settings REGEX "^set[(]OPENIMAGEIO_(VERSION|HASH|HASH_TYPE|FILE) ")
+  oiio_settings REGEX "^set[(]OPENIMAGEIO_(VERSION|URI|HASH|HASH_TYPE|FILE) ")
 list(JOIN oiio_settings "\n" oiio_settings)
 cmake_language(EVAL CODE "${oiio_settings}")
 
@@ -12,7 +12,7 @@ message(STATUS "Installing OpenImageIO ${OPENIMAGEIO_VERSION}")
 set(work_dir "${OIIO_PREFIX}/_build")
 file(MAKE_DIRECTORY "${work_dir}")
 file(DOWNLOAD
-  "https://projects.blender.org/blender/lib-source/media/branch/main/${OPENIMAGEIO_FILE}"
+  "${OPENIMAGEIO_URI}"
   "${work_dir}/${OPENIMAGEIO_FILE}"
   EXPECTED_HASH "${OPENIMAGEIO_HASH_TYPE}=${OPENIMAGEIO_HASH}"
   TLS_VERIFY ON

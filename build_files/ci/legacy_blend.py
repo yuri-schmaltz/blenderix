@@ -1,6 +1,7 @@
 """Generate legacy .blend fixtures with upstream Blender or check them in BlenderiX."""
 
 import argparse
+import itertools
 import sys
 from pathlib import Path
 
@@ -38,17 +39,25 @@ def create_fixtures(directory):
 def check_fixture(case, path):
     assert bpy.ops.wm.open_mainfile(filepath=str(path)) == {"FINISHED"}
     cube = bpy.data.objects["Legacy Mesh"]
-    assert len(cube.data.vertices) == 8 and len(cube.data.polygons) == 6
+    mesh = cube.data
+    assert {tuple(vertex.co) for vertex in mesh.vertices} == set(
+        itertools.product((-1, 1), repeat=3)
+    )
+    assert len(mesh.edges) == 12 and len(mesh.polygons) == 6
+    assert all(len(set(polygon.vertices)) == 4 for polygon in mesh.polygons)
     assert cube["fixture_marker"] == 42
     if case in {"modifier", "mixed"}:
         bevel = cube.modifiers["Legacy Bevel"]
         assert bevel.type == "BEVEL" and bevel.segments == 2 and bevel.width == 0.125
+        evaluated = cube.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        assert len(evaluated.data.vertices) > len(mesh.vertices)
     if case == "linked":
         assert cube.library and Path(bpy.path.abspath(cube.library.filepath)).is_file()
     if case == "mixed":
+        camera = bpy.context.scene.camera
         print(
             "Feature data observed:",
-            f"camera={bool(bpy.context.scene.camera)}",
+            f"camera={bool(camera and camera.type == 'CAMERA')}",
             f"animation={bool(cube.animation_data and cube.animation_data.action)}",
             flush=True,
         )

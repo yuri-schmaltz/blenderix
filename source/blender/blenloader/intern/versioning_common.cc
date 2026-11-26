@@ -27,7 +27,6 @@
 
 #include "BKE_animsys.hh"
 #include "BKE_compositor.hh"
-#include "BKE_grease_pencil_legacy_convert.hh"
 #include "BKE_idprop.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_lib_override.hh"
@@ -42,13 +41,11 @@
 #include "BKE_report.hh"
 #include "BKE_screen.hh"
 
-#include "ANIM_versioning.hh"
 
 #include "NOD_socket.hh"
 
 #include "BLT_translation.hh"
 
-#include "SEQ_sequencer.hh"
 
 #include "MEM_guardedalloc.h"
 
@@ -810,7 +807,7 @@ static bool blendfile_or_libraries_versions_atleast(Main *bmain,
 }
 
 void do_versions_after_setup(Main *new_bmain,
-                             BlendfileLinkAppendContext *lapp_context,
+                             BlendfileLinkAppendContext * /*lapp_context*/,
                              BlendFileReadReport *reports)
 {
   /* WARNING: The code below may add IDs. These IDs _will_ be (by definition) conforming to current
@@ -847,14 +844,6 @@ void do_versions_after_setup(Main *new_bmain,
     reports->pre_animato_file_loaded = true;
   }
 
-  if (!blendfile_or_libraries_versions_atleast(new_bmain, 250, 0)) {
-    for (Scene &scene : new_bmain->scenes) {
-      if (scene.ed) {
-        seq::doversion_250_sound_proxy_update(new_bmain, scene.ed);
-      }
-    }
-  }
-
   if (!blendfile_or_libraries_versions_atleast(new_bmain, 302, 1)) {
     BKE_lib_override_library_main_proxy_convert(new_bmain, reports);
     /* Currently liboverride code can generate invalid namemap. This is a known issue, requires
@@ -872,17 +861,6 @@ void do_versions_after_setup(Main *new_bmain,
      * be cleared, so it is re-run in a later version when the bug is fixed and the versioning has
      * been made idempotent. */
     BKE_main_mesh_legacy_convert_auto_smooth(*new_bmain);
-  }
-
-  if (!blendfile_or_libraries_versions_atleast(new_bmain, 404, 2)) {
-    /* Version all the action assignments of just-versioned datablocks. This MUST happen before the
-     * GreasePencil conversion, as that assumes the Action Slots have already been assigned. */
-    animrig::versioning::convert_legacy_action_assignments(*new_bmain, reports->reports);
-  }
-
-  if (!blendfile_or_libraries_versions_atleast(new_bmain, 403, 3)) {
-    /* Convert all the legacy grease pencil objects. This does not touch annotations. */
-    bke::greasepencil::convert::legacy_main(*new_bmain, lapp_context, *reports);
   }
 
   if (!blendfile_or_libraries_versions_atleast(new_bmain, 500, 4)) {

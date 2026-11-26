@@ -41,7 +41,9 @@
 #include "DNA_fileglobal_types.h"
 #include "DNA_genfile.h"
 #include "DNA_key_types.h"
+#include "DNA_anim_types.h"
 #include "DNA_layer_types.h"
+#include "DNA_mesh_types.h"
 #include "DNA_node_types.h"
 #include "DNA_packedFile_types.h"
 #include "DNA_screen_types.h"
@@ -77,6 +79,7 @@
 #include "BKE_blender_version.h"
 #include "BKE_collection.hh"
 #include "BKE_global.hh" /* for G */
+#include "BKE_attribute_legacy_convert.hh"
 #include "BKE_idprop.hh"
 #include "BKE_idtype.hh"
 #include "BKE_layer.hh"
@@ -99,6 +102,7 @@
 #include "BKE_packedFile.hh"
 #include "BKE_preferences.h"
 #include "BKE_report.hh"
+#include "BKE_mesh_legacy_convert.hh"
 #include "BKE_scene.hh"
 #include "BKE_screen.hh"
 #include "BKE_undo_system.hh"
@@ -2432,6 +2436,12 @@ static void direct_link_id_common(BlendDataReader *reader,
     return;
   }
 
+  /* The animation subsystem does not read these pointers in BlenderiX. Avoid exposing
+   * unresolved addresses from legacy files to evaluation and RNA. */
+  if (ELEM(id->id_type(), ID_SCE, ID_OB, ID_ME, ID_IM, ID_KE, ID_CF)) {
+    reinterpret_cast<IdAdtTemplate *>(id)->adt = nullptr;
+  }
+
   id->asset_data = nullptr;
 
   /* Link direct data of ID properties. */
@@ -3919,23 +3929,26 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
   /* Don't allow versioning to create new data-blocks. */
   main->is_locked_for_linking = true;
 
-  /* Code ensuring conversion to/from new 'system IDProperties'. This needs to run before any other
-   * data versioning. Otherwise, things like Cycles versioning code cannot work as expected. */
   if (!MAIN_VERSION_FILE_ATLEAST(main, 500, 27)) {
-    /* Generate System IDProperties by copying the whole 'user-defined' historic IDProps into new
-     * system-defined-only storage. While not optimal (as it also duplicates actual user-defined
-     * IDProperties), this seems to be the only safe and sound way to handle the migration. */
-    version_system_idprops_generate(main);
-  }
-  if (!MAIN_VERSION_FILE_ATLEAST(main, 500, 70)) {
-    /* Same as above, but decision to keep user-defined (aka custom properties) in nodes was taken
-     * later during 5.0 development process. */
-    version_system_idprops_nodes_generate(main);
-  }
-  if (!MAIN_VERSION_FILE_ATLEAST(main, 500, 110)) {
-    /* Same as above, but children bones were missed by initial versioning code, attempt to
-     * transfer idprops data still in case they have no system properties defined yet. */
-    version_system_idprops_children_bones_generate(main);
+    /* ID pointers have yet to be relinked, so their refcounts cannot be updated here. */
+    const auto migrate_system_properties = [](const IDProperty *properties,
+                                              IDProperty *&system_properties) {
+      if (properties && !system_properties) {
+        system_properties = IDP_CopyProperty_ex(properties, LIB_ID_CREATE_NO_USER_REFCOUNT);
+      }
+    };
+
+    ID *id;
+    FOREACH_MAIN_ID_BEGIN (main, id) {
+      migrate_system_properties(id->properties, id->system_properties);
+    }
+    FOREACH_MAIN_ID_END;
+
+    for (Scene &scene : main->scenes) {
+      for (ViewLayer &view_layer : scene.view_layers) {
+        migrate_system_properties(view_layer.id_properties, view_layer.system_properties);
+      }
+    }
   }
 
   if (G.debug & G_DEBUG) {
@@ -3958,7 +3971,41 @@ static void do_versions(FileData *fd, Library *lib, Main *main)
               main->build_hash);
   }
 
-  /* Legacy versioning removed in mesh-only fork. */
+  if (!MAIN_VERSION_FILE_ATLEAST(main, 400, 1)) {
+    for (Mesh &mesh : main->meshes) {
+      BKE_mesh_legacy_convert_flags_to_selection_layers(&mesh);
+      BKE_mesh_legacy_convert_flags_to_hide_layers(&mesh);
+      BKE_mesh_legacy_convert_uvs_to_generic(&mesh);
+      BKE_mesh_legacy_convert_mpoly_to_material_indices(&mesh);
+      BKE_mesh_legacy_sharp_faces_from_flags(&mesh);
+      BKE_mesh_legacy_bevel_weight_to_layers(&mesh);
+      BKE_mesh_legacy_sharp_edges_from_flags(&mesh);
+      BKE_mesh_legacy_face_set_to_generic(&mesh);
+      BKE_mesh_legacy_edge_crease_to_layers(&mesh);
+      BKE_mesh_legacy_uv_seam_from_flags(&mesh);
+      BKE_mesh_legacy_convert_verts_to_positions(&mesh);
+      BKE_mesh_legacy_attribute_flags_to_strings(&mesh);
+      BKE_mesh_legacy_convert_loops_to_corners(&mesh);
+      BKE_mesh_legacy_convert_polys_to_offsets(&mesh);
+      BKE_mesh_legacy_convert_edges_to_generic(&mesh);
+    }
+  }
+  if (!MAIN_VERSION_FILE_ATLEAST(main, 400, 2)) {
+    for (Mesh &mesh : main->meshes) {
+      BKE_mesh_legacy_bevel_weight_to_generic(&mesh);
+    }
+  }
+  if (!MAIN_VERSION_FILE_ATLEAST(main, 400, 7)) {
+    for (Mesh &mesh : main->meshes) {
+      BKE_mesh_legacy_crease_to_generic(&mesh);
+    }
+  }
+  if (!MAIN_VERSION_FILE_ATLEAST(main, 501, 19)) {
+    for (Mesh &mesh : main->meshes) {
+      bke::mesh_convert_customdata_to_storage(mesh);
+    }
+  }
+
   UNUSED_VARS(lib);
 
   main->is_locked_for_linking = false;

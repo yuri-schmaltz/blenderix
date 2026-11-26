@@ -14,7 +14,12 @@ BlenderiX (fork "mesh-only")
 Este repositório é um **fork enxuto do Blender** (versão interna 5.4.0 alpha) com um único foco:
 **modelagem e manipulação de malhas 3D**. Recursos fora desse escopo (física,
 compositor, sequenciador, movie clip, animação, render etc.) foram removidos,
-preservando estruturas DNA/RNA. A compatibilidade com `.blend` de versões anteriores ainda precisa ser validada.
+preservando estruturas DNA/RNA.
+
+O BlenderiX abriu, salvou e reabriu amostras `.blend` do Blender 3.6.0 e 4.5.0
+com malha, modificador Bevel, biblioteca vinculada e cena com câmera e animação.
+Nessas amostras, a malha foi preservada e os dados de câmera e animação foram
+descartados. Outras versões e tipos de arquivo permanecem sem validação.
 
 - Documento de estado e próximos passos: [`HANDOFF.md`](../HANDOFF.md)
 - Tema padrão do aplicativo: [`themes/README.md`](../themes/README.md)

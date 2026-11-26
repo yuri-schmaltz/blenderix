@@ -20,6 +20,12 @@ bpy.ops.object.mode_set(mode="OBJECT")
 assert len(cube.data.vertices) == 26
 cube.name = "BlenderiX CI Cube"
 assert bpy.ops.wm.save_as_mainfile(filepath=os.environ["BLENDERIX_SMOKE_FILE"]) == {"FINISHED"}
+
+remesh = cube.modifiers.new(name="DualCon Smoke Test", type="REMESH")
+remesh.mode = "SHARP"
+assert bpy.ops.object.modifier_apply(modifier=remesh.name) == {"FINISHED"}
+assert len(cube.data.vertices) > 26
+print("DualCon Remesh passed")
 '
 
 "$blender" --background --factory-startup --python-exit-code 1 --python-expr '
