@@ -149,7 +149,10 @@ build_files/ci/test_installed.sh "$install_dir/blender"
 
 O artefato do CI contém a instalação em um `.tar.gz`, que preserva a
 permissão de execução. Esse pacote usa as bibliotecas de sistema do Ubuntu
-26.04, inclusive o Python 3.14.
+26.04, inclusive a biblioteca compartilhada do Python 3.14. A
+[prévia Linux v1.0.0-preview.1](https://github.com/yuri-schmaltz/blenderix/releases/tag/v1.0.0-preview.1)
+foi publicada a partir do commit `feaa4ac` e testada em uma instalação mínima
+do Ubuntu 26.04 com as dependências de execução descritas na release.
 
 O CI também roda `build_files/ci/test_legacy.sh "$install_dir/blender"` com as
 amostras versionadas em `build_files/ci/fixtures/`. Para verificar outra versão
@@ -195,9 +198,11 @@ mesmas opções e `-DWITH_STRICT_BLENDER_LINK=ON`. A primeira execução identif
 1.883 símbolos indefinidos distintos, principalmente em código de subsistemas
 removidos. A restauração da biblioteca interna de funções do Blender
 (`0cb6498d8a0c4b965ab0f5c55830034594c66812`), com headers idênticos aos já
-presentes no fork, reduziu o diagnóstico para 1.844 símbolos distintos e
-eliminou as referências indefinidas a `blender::fn`.
-O CMake com `WITH_GTESTS=ON` gerou alvos incompletos e o CTest
+presentes no fork, eliminou as referências indefinidas a `blender::fn`. O
+diagnóstico do commit `feaa4ac` encontrou 1.836 símbolos indefinidos distintos
+no build estrito usual e 1.777 com descarte de seções não referenciadas. Esse
+segundo resultado usa `-ffunction-sections -fdata-sections` em C e C++ e
+`-Wl,--gc-sections` no linker. O CMake com `WITH_GTESTS=ON` gerou alvos incompletos e o CTest
 listou zero testes.
 
 ---
