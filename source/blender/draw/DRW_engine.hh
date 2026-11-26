@@ -38,7 +38,6 @@ namespace bke {
 enum class AttrType : int16_t;
 }
 
-void DRW_engines_register();
 void DRW_engines_free();
 
 void DRW_module_init();
@@ -120,15 +119,6 @@ bool DRW_draw_in_progress();
  */
 bool DRW_render_check_grease_pencil(Depsgraph *depsgraph, View3D *v3d = nullptr);
 
-/**
- * Render grease pencil on top of other render engine output.
- * This function creates a DRWContext.
- */
-void DRW_render_gpencil(RenderEngine *engine, Depsgraph *depsgraph);
-
-void DRW_render_context_enable(Render *render);
-void DRW_render_context_disable(Render *render);
-
 void DRW_mutexes_init();
 void DRW_mutexes_exit();
 
@@ -183,15 +173,6 @@ void DRW_cache_free_old_subdiv();
 /** Never use this. Only for closing blender. */
 void DRW_gpu_context_enable_ex(bool restore);
 void DRW_gpu_context_disable_ex(bool restore);
-
-/* Render pipeline GPU context control.
- * Enable system context first, then enable blender context,
- * then disable blender context, then disable system context. */
-
-void DRW_system_gpu_render_context_enable(GHOST_IContext *re_system_gpu_context);
-void DRW_system_gpu_render_context_disable(GHOST_IContext *re_system_gpu_context);
-void DRW_blender_gpu_render_context_enable(void *re_gpu_context);
-void DRW_blender_gpu_render_context_disable(void *re_gpu_context);
 
 DRWData *DRW_viewport_data_create();
 void DRW_viewport_data_free(DRWData *drw_data);

@@ -46,8 +46,6 @@ struct rcti;
 struct RegionView3D;
 struct RenderEngine;
 struct RenderEngineType;
-struct RenderLayer;
-struct RenderResult;
 struct SpaceLink;
 struct TaskGraph;
 struct View3D;
@@ -139,22 +137,10 @@ struct DrawEngine {
 
 void DRW_viewport_request_redraw();
 
-void DRW_render_to_image(
-    RenderEngine *engine,
-    Depsgraph *depsgraph,
-    ::std::function<void(RenderEngine *, RenderLayer *, const rcti)> render_view_cb,
-    ::std::function<void(RenderResult *)> store_metadata_cb);
-
-void DRW_render_object_iter(RenderEngine *engine,
-                            Depsgraph *depsgraph,
-                            ::std::function<void(draw::ObjectRef &, RenderEngine *, Depsgraph *)>);
-
-void DRW_render_set_time(RenderEngine *engine, Depsgraph *depsgraph, int frame, float subframe);
-
 /**
  * Assume a valid GL context is bound (and that the gl_context_mutex has been acquired).
  * This function only setup DST and execute the given function.
- * \warning similar to DRW_render_to_image you cannot use default lists (`dfbl` & `dtxl`).
+ * \warning Do not use default lists (`dfbl` & `dtxl`).
  */
 void DRW_custom_pipeline_begin(DRWContext &draw_ctx, Depsgraph *depsgraph);
 void DRW_custom_pipeline_end(DRWContext &draw_ctx);

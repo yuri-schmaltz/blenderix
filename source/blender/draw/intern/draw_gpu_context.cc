@@ -6,14 +6,13 @@
  * \ingroup draw
  */
 
+#include "BLI_threads.hh"
+
 #include "BKE_global.hh"
 
 #include "GPU_capabilities.hh"
 #include "GPU_context.hh"
 #include "GPU_state.hh"
-
-#include "RE_engine.h"
-#include "RE_pipeline.h"
 
 #include "DRW_engine.hh"
 #include "DRW_render.hh"
@@ -162,8 +161,6 @@ class ContextShared {
 
 /** Unique context used by Viewports. */
 static ContextShared *viewport_context = nullptr;
-/** Unique context used by Preview jobs. */
-static ContextShared *preview_context = nullptr;
 
 void DRW_gpu_context_create()
 {
@@ -172,7 +169,6 @@ void DRW_gpu_context_create()
   DRW_mutexes_init();
 
   viewport_context = MEM_new<ContextShared>(__func__);
-  preview_context = MEM_new<ContextShared>(__func__);
 
   viewport_context->enable();
 }
@@ -186,7 +182,6 @@ void DRW_gpu_context_destroy()
   DRW_mutexes_exit();
 
   MEM_SAFE_DELETE(viewport_context);
-  MEM_SAFE_DELETE(preview_context);
 }
 
 /** \} */
@@ -209,22 +204,6 @@ void DRW_gpu_context_disable_ex(bool restore)
     return;
   }
   viewport_context->disable(restore);
-}
-
-static void drw_gpu_preview_context_enable()
-{
-  if (preview_context == nullptr) {
-    return;
-  }
-  preview_context->enable();
-}
-
-static void drw_gpu_preview_context_disable()
-{
-  if (preview_context == nullptr) {
-    return;
-  }
-  preview_context->disable();
 }
 
 void DRW_gpu_context_enable()
@@ -256,89 +235,6 @@ void DRW_gpu_context_disable()
   DRW_gpu_context_disable_ex(true);
 }
 
-void DRW_system_gpu_render_context_enable(GHOST_IContext *re_system_gpu_context)
-{
-  /* If thread is main you should use DRW_gpu_context_enable(). */
-  BLI_assert(!BLI_thread_is_main());
-
-  DRW_lock_start();
-  WM_system_gpu_context_activate(re_system_gpu_context);
-}
-
-void DRW_system_gpu_render_context_disable(GHOST_IContext *re_system_gpu_context)
-{
-  WM_system_gpu_context_release(re_system_gpu_context);
-  DRW_lock_end();
-}
-
-void DRW_blender_gpu_render_context_enable(void *re_gpu_context)
-{
-  /* If thread is main you should use DRW_gpu_context_enable(). */
-  BLI_assert(!BLI_thread_is_main());
-
-  GPU_context_active_set(static_cast<GPUContext *>(re_gpu_context));
-}
-
-void DRW_blender_gpu_render_context_disable(void * /*re_gpu_context*/)
-{
-  GPU_flush();
-  GPU_context_active_set(nullptr);
-}
-
-void DRW_render_context_enable(Render *render)
-{
-  if (G.background && viewport_context == nullptr) {
-    WM_init_gpu_offscreen();
-  }
-
-  GPU_render_begin();
-
-  if (GPU_use_main_context_workaround()) {
-    GPU_context_main_lock();
-    DRW_gpu_context_enable();
-    return;
-  }
-
-  GHOST_IContext *re_viewport_system_gpu_context = RE_system_gpu_context_get(render);
-
-  /* Changing Context */
-  if (re_viewport_system_gpu_context != nullptr) {
-    DRW_system_gpu_render_context_enable(re_viewport_system_gpu_context);
-    /* We need to query gpu context after a gl context has been bound. */
-    void *re_viewport_context = RE_blender_gpu_context_ensure(render);
-    DRW_blender_gpu_render_context_enable(re_viewport_context);
-  }
-  else {
-    drw_gpu_preview_context_enable();
-  }
-}
-
-void DRW_render_context_disable(Render *render)
-{
-  if (GPU_use_main_context_workaround()) {
-    DRW_gpu_context_disable();
-    GPU_render_end();
-    GPU_context_main_unlock();
-    return;
-  }
-
-  GHOST_IContext *re_viewport_system_gpu_context = RE_system_gpu_context_get(render);
-
-  if (re_viewport_system_gpu_context != nullptr) {
-    void *re_viewport_context = RE_blender_gpu_context_ensure(render);
-    /* GPU rendering may occur during context disable. */
-    DRW_blender_gpu_render_context_disable(re_viewport_context);
-    GPU_render_end();
-    DRW_system_gpu_render_context_disable(re_viewport_system_gpu_context);
-  }
-  else {
-    /* Usually the case for a preview job. The `Render` is created inside the render thread which
-     * is too late to create a GPU context. */
-    drw_gpu_preview_context_disable();
-    GPU_render_end();
-  }
-}
-
 /** \} */
 
 /* -------------------------------------------------------------------- */
@@ -354,7 +250,7 @@ GHOST_IContext *DRW_system_gpu_context_get()
    * final frame-buffer. VR could in theory create its own context, but that would mean we have to
    * switch to it just to submit the final frame, which has notable performance impact.
    *
-   * We could "inject" a context through DRW_system_gpu_render_context_enable(), but that would
+   * Using a separate context for submission would
    * have to work from the main thread, which is tricky to get working too. The preferable solution
    * would be using a separate thread for VR drawing where a single context can stay active. */
 

@@ -497,7 +497,7 @@ void DRWContext::acquire_data()
     }
   }
 
-  /* Init modules ahead of time because the begin_sync happens before DRW_render_object_iter. */
+  /* Initialize modules before beginning synchronization. */
   this->data->modules_init();
 }
 
@@ -2073,164 +2073,6 @@ bool DRW_render_check_grease_pencil(Depsgraph *depsgraph, View3D *v3d)
   return depsgraph_contains_visible_grease_pencil_geometry(depsgraph, false);
 }
 
-void DRW_render_gpencil(RenderEngine *engine, Depsgraph *depsgraph)
-{
-  using namespace blender::draw;
-  /* This function should only be called if there are grease pencil objects,
-   * especially important to avoid failing in background renders without GPU context. */
-  BLI_assert(DRW_render_check_grease_pencil(depsgraph));
-
-  Scene *scene = DEG_get_evaluated_scene(depsgraph);
-  ViewLayer *view_layer = DEG_get_evaluated_view_layer(depsgraph);
-  RenderResult *render_result = RE_engine_get_result(engine);
-  RenderLayer *render_layer = RE_GetRenderLayer(render_result, view_layer->name);
-  if (render_layer == nullptr) {
-    return;
-  }
-
-  Render *render = engine->re;
-
-  DRW_render_context_enable(render);
-
-  DRWContext draw_ctx(DRWContext::RENDER, depsgraph, {engine->resolution_x, engine->resolution_y});
-  draw_ctx.acquire_data();
-  draw_ctx.options.draw_background = scene->r.alphamode == R_ADDSKY;
-
-  /* Main rendering. */
-  rctf view_rect;
-  rcti render_rect;
-  RE_GetViewPlane(render, &view_rect, &render_rect);
-  if (BLI_rcti_is_empty(&render_rect)) {
-    BLI_rcti_init(&render_rect, 0, draw_ctx.size[0], 0, draw_ctx.size[1]);
-  }
-
-  for (RenderView *render_view = render_result->views.first(); render_view != nullptr;
-       render_view = render_view->next)
-  {
-    RE_SetActiveRenderView(render, render_view->name);
-    gpencil::Engine::render_to_image(engine, render_layer, render_rect);
-  }
-
-  command::StateSet::set();
-
-  GPU_depth_test(GPU_DEPTH_NONE);
-
-  gpu::TexturePool::get().reset(true);
-
-  draw_ctx.release_data();
-
-  /* Restore Drawing area. */
-  GPU_framebuffer_restore();
-
-  DRW_render_context_disable(render);
-}
-
-void DRW_render_to_image(
-    RenderEngine *engine,
-    Depsgraph *depsgraph,
-    std::function<void(RenderEngine *, RenderLayer *, const rcti)> render_view_cb,
-    std::function<void(RenderResult *)> store_metadata_cb)
-{
-  using namespace blender::draw;
-  Scene *scene = DEG_get_evaluated_scene(depsgraph);
-  ViewLayer *view_layer = DEG_get_evaluated_view_layer(depsgraph);
-  Render *render = engine->re;
-
-  /* IMPORTANT: We don't support immediate mode in render mode!
-   * This shall remain in effect until immediate mode supports
-   * multiple threads. */
-
-  /* Begin GPU workload Boundary */
-  GPU_render_begin();
-
-  DRWContext draw_ctx(DRWContext::RENDER, depsgraph, {engine->resolution_x, engine->resolution_y});
-  draw_ctx.acquire_data();
-  draw_ctx.options.draw_background = scene->r.alphamode == R_ADDSKY;
-
-  /* Main rendering. */
-  rctf view_rect;
-  rcti render_rect;
-  RE_GetViewPlane(render, &view_rect, &render_rect);
-  if (BLI_rcti_is_empty(&render_rect)) {
-    BLI_rcti_init(&render_rect, 0, draw_ctx.size[0], 0, draw_ctx.size[1]);
-  }
-
-  /* Reset state before drawing */
-  command::StateSet::set();
-
-  /* set default viewport */
-  GPU_viewport(0, 0, draw_ctx.size[0], draw_ctx.size[1]);
-
-  /* Init render result. */
-  RenderResult *render_result = RE_engine_begin_result(engine,
-                                                       0,
-                                                       0,
-                                                       draw_ctx.size[0],
-                                                       draw_ctx.size[1],
-                                                       view_layer->name,
-                                                       /*RR_ALL_VIEWS*/ nullptr);
-  RenderLayer *render_layer = render_result->layers.first();
-  for (RenderView *render_view = render_result->views.first(); render_view != nullptr;
-       render_view = render_view->next)
-  {
-    RE_SetActiveRenderView(render, render_view->name);
-    render_view_cb(engine, render_layer, render_rect);
-  }
-
-  RE_engine_end_result(engine, render_result, false, false, false);
-
-  store_metadata_cb(RE_engine_get_result(engine));
-
-  GPU_framebuffer_restore();
-
-  gpu::TexturePool::get().reset(true);
-
-  draw_ctx.release_data();
-  DRW_cache_free_old_subdiv();
-
-  /* End GPU workload Boundary */
-  GPU_render_end();
-}
-
-void DRW_render_object_iter(
-    RenderEngine *engine,
-    Depsgraph *depsgraph,
-    std::function<void(draw::ObjectRef &, RenderEngine *, Depsgraph *)> callback)
-{
-  using namespace blender::draw;
-
-  DRWContext &draw_ctx = drw_get();
-
-  /* Without a viewport there are no viewport settings to hide objects, draw everything. */
-  auto should_draw_object_all = [](Object & /*ob*/, const DupliObject * /*dupli*/) -> DrawFilter {
-    return DrawFilter::Draw;
-  };
-  auto should_draw_object_viewport = [&](Object &ob, const DupliObject *dupli) -> DrawFilter {
-    return draw_filter_from_viewport_object_for_draw(draw_ctx, ob, dupli);
-  };
-  FunctionRef<DrawFilter(Object &, const DupliObject *)> should_draw_object =
-      should_draw_object_viewport;
-  if (draw_ctx.v3d == nullptr) {
-    should_draw_object = should_draw_object_all;
-  }
-
-  draw_ctx.sync([&](DupliCacheManager &duplis, ExtractionGraph &extraction) {
-    foreach_obref_in_scene(draw_ctx, should_draw_object, [&](ObjectRef &ob_ref) {
-      if (ob_ref.is_dupli() == false) {
-        draw::drw_batch_cache_validate(ob_ref.object);
-      }
-      else {
-        duplis.try_add(ob_ref);
-      }
-      callback(ob_ref, engine, depsgraph);
-      if (ob_ref.is_dupli() == false) {
-        draw::drw_batch_cache_generate_requested(ob_ref.object, *extraction.graph);
-      }
-      /* Batch generation for duplis happens after iter_callback. */
-    });
-  });
-}
-
 void DRW_custom_pipeline_begin(DRWContext &draw_ctx, Depsgraph * /*depsgraph*/)
 {
   draw_ctx.acquire_data();
@@ -2261,14 +2103,6 @@ void DRW_cache_restart()
   draw_ctx.data->modules_exit();
   draw_ctx.acquire_data();
   draw_ctx.data->modules_begin_sync();
-}
-
-void DRW_render_set_time(RenderEngine *engine, Depsgraph *depsgraph, int frame, float subframe)
-{
-  DRWContext &draw_ctx = drw_get();
-  RE_engine_frame_set(engine, frame, subframe);
-  draw_ctx.scene = DEG_get_evaluated_scene(depsgraph);
-  draw_ctx.view_layer = DEG_get_evaluated_view_layer(depsgraph);
 }
 
 static struct DRWSelectBuffer {
@@ -2532,12 +2366,6 @@ bool DRWContext::is_transforming() const
 /* -------------------------------------------------------------------- */
 /** \name DRW_engines
  * \{ */
-
-void DRW_engines_register()
-{
-  RE_engines_register(&DRW_engine_viewport_eevee_type);
-  RE_engines_register(&DRW_engine_viewport_workbench_type);
-}
 
 void DRW_engines_free()
 {

@@ -32,7 +32,6 @@
 #include "IMB_imbuf_types.hh"
 
 #include "RE_engine.h"
-#include "RE_pipeline.h"
 
 #include "draw_cache.hh"
 #include "draw_common.hh"
@@ -560,8 +559,7 @@ class Instance : public DrawEngine {
   void draw_image_render(Manager &manager,
                          gpu::Texture *depth_tx,
                          gpu::Texture *depth_in_front_tx,
-                         gpu::Texture *color_tx,
-                         RenderEngine *engine = nullptr)
+                         gpu::Texture *color_tx)
   {
     if (scene_state_.render_finished) {
       /* This can happen in viewport animation renders, if the scene didn't have any updates
@@ -572,13 +570,6 @@ class Instance : public DrawEngine {
 
     BLI_assert(scene_state_.sample == 0);
     for (auto i : IndexRange(scene_state_.samples_len)) {
-      if (hair_buffer_overflow_error_) {
-        RE_engine_set_error_message(engine, hair_buffer_overflow_error_);
-      }
-
-      if (engine && RE_engine_test_break(engine)) {
-        break;
-      }
       if (i != 0) {
         scene_state_.sample = i;
         /* Re-sync anything dependent on scene_state.sample. */
@@ -615,205 +606,6 @@ void Engine::free_static()
 /** \name Interface with legacy C DRW manager
  * \{ */
 
-/* RENDER */
-
-static bool workbench_render_framebuffers_init(const DRWContext *draw_ctx)
-{
-  /* For image render, allocate own buffers because we don't have a viewport. */
-  const float2 viewport_size = draw_ctx->viewport_size_get();
-  const int2 size = {int(viewport_size.x), int(viewport_size.y)};
-
-  DefaultTextureList *dtxl = draw_ctx->viewport_texture_list_get();
-
-  /* When doing a multi view rendering the first view will allocate the buffers
-   * the other views will reuse these buffers */
-  if (dtxl->color == nullptr) {
-    BLI_assert(dtxl->depth == nullptr);
-    eGPUTextureUsage usage = GPU_TEXTURE_USAGE_GENERAL;
-    dtxl->color = GPU_texture_create_2d(
-        "txl.color", size.x, size.y, 1, gpu::TextureFormat::SFLOAT_16_16_16_16, usage, nullptr);
-    dtxl->depth = GPU_texture_create_2d("txl.depth",
-                                        size.x,
-                                        size.y,
-                                        1,
-                                        gpu::TextureFormat::SFLOAT_32_DEPTH_UINT_8,
-                                        usage,
-                                        nullptr);
-    dtxl->depth_in_front = GPU_texture_create_2d("txl.depth_in_front",
-                                                 size.x,
-                                                 size.y,
-                                                 1,
-                                                 gpu::TextureFormat::SFLOAT_32_DEPTH_UINT_8,
-                                                 usage,
-                                                 nullptr);
-  }
-
-  if (!(dtxl->depth && dtxl->color && dtxl->depth_in_front)) {
-    return false;
-  }
-
-  DefaultFramebufferList *dfbl = draw_ctx->viewport_framebuffer_list_get();
-
-  GPU_framebuffer_ensure_config(
-      &dfbl->default_fb,
-      {GPU_ATTACHMENT_TEXTURE(dtxl->depth), GPU_ATTACHMENT_TEXTURE(dtxl->color)});
-
-  GPU_framebuffer_ensure_config(&dfbl->depth_only_fb,
-                                {GPU_ATTACHMENT_TEXTURE(dtxl->depth), GPU_ATTACHMENT_NONE});
-
-  GPU_framebuffer_ensure_config(&dfbl->color_only_fb,
-                                {GPU_ATTACHMENT_NONE, GPU_ATTACHMENT_TEXTURE(dtxl->color)});
-
-  return GPU_framebuffer_check_valid(dfbl->default_fb, nullptr) &&
-         GPU_framebuffer_check_valid(dfbl->color_only_fb, nullptr) &&
-         GPU_framebuffer_check_valid(dfbl->depth_only_fb, nullptr);
-}
-
-static void write_render_color_output(RenderLayer *layer,
-                                      const char *viewname,
-                                      gpu::FrameBuffer *fb,
-                                      const rcti *rect)
-{
-  RenderPass *rp = RE_pass_find_by_name(layer, RE_PASSNAME_COMBINED, viewname);
-  if (rp) {
-    GPU_framebuffer_bind(fb);
-    GPU_framebuffer_read_color(fb,
-                               rect->xmin,
-                               rect->ymin,
-                               BLI_rcti_size_x(rect),
-                               BLI_rcti_size_y(rect),
-                               4,
-                               0,
-                               GPU_DATA_FLOAT,
-                               rp->ibuf->float_data_for_write());
-  }
-}
-
-static void write_render_z_output(RenderLayer *layer,
-                                  const char *viewname,
-                                  gpu::FrameBuffer *fb,
-                                  const rcti *rect,
-                                  const float4x4 &winmat)
-{
-  RenderPass *rp = RE_pass_find_by_name(layer, RE_PASSNAME_DEPTH, viewname);
-  if (rp) {
-    GPU_framebuffer_bind(fb);
-    GPU_framebuffer_read_depth(fb,
-                               rect->xmin,
-                               rect->ymin,
-                               BLI_rcti_size_x(rect),
-                               BLI_rcti_size_y(rect),
-                               GPU_DATA_FLOAT,
-                               rp->ibuf->float_data_for_write());
-
-    int pix_num = BLI_rcti_size_x(rect) * BLI_rcti_size_y(rect);
-
-    /* Convert GPU depth [0..1] to view Z [near..far] */
-    if (draw::View::default_get().is_persp()) {
-      for (float &z : MutableSpan(rp->ibuf->float_data_for_write(), pix_num)) {
-        if (z == 1.0f) {
-          z = 1e10f; /* Background */
-        }
-        else {
-          z = z * 2.0f - 1.0f;
-          z = winmat[3][2] / (z + winmat[2][2]);
-        }
-      }
-    }
-    else {
-      /* Keep in mind, near and far distance are negatives. */
-      float near = draw::View::default_get().near_clip();
-      float far = draw::View::default_get().far_clip();
-      float range = fabsf(far - near);
-
-      for (float &z : MutableSpan(rp->ibuf->float_data_for_write(), pix_num)) {
-        if (z == 1.0f) {
-          z = 1e10f; /* Background */
-        }
-        else {
-          z = z * range - near;
-        }
-      }
-    }
-  }
-}
-
-static void workbench_render_to_image(RenderEngine *engine, RenderLayer *layer, const rcti rect)
-{
-  using namespace blender::draw;
-  const DRWContext *draw_ctx = DRW_context_get();
-
-  if (!workbench_render_framebuffers_init(draw_ctx)) {
-    RE_engine_report(engine, RPT_ERROR, "Failed to allocate GPU buffers");
-    return;
-  }
-
-  /* Setup */
-  DefaultFramebufferList *dfbl = draw_ctx->viewport_framebuffer_list_get();
-  Depsgraph *depsgraph = draw_ctx->depsgraph;
-
-  workbench::Instance instance;
-
-  /* TODO(sergey): Shall render hold pointer to an evaluated camera instead? */
-  Object *camera_ob = DEG_get_evaluated(depsgraph, RE_GetCamera(engine->re));
-
-  /* Set the perspective, view and window matrix. */
-  float4x4 winmat, viewmat, viewinv;
-  RE_GetCameraWindow(engine->re, camera_ob, winmat.ptr());
-  RE_GetCameraModelMatrix(engine->re, camera_ob, viewinv.ptr());
-  viewmat = math::invert(viewinv);
-
-  /* Render */
-  /* TODO: Remove old draw manager calls. */
-  DRW_cache_restart();
-  draw::View::default_set(float4x4(viewmat), float4x4(winmat));
-
-  instance.init(depsgraph, camera_ob);
-
-  draw::Manager &manager = *DRW_manager_get();
-  manager.begin_sync();
-
-  instance.begin_sync();
-  DRW_render_object_iter(
-      engine,
-      depsgraph,
-      [&](draw::ObjectRef &ob_ref, RenderEngine * /*engine*/, Depsgraph * /*depsgraph*/) {
-        instance.object_sync(ob_ref, manager);
-      });
-  instance.end_sync();
-
-  manager.end_sync();
-
-  DRW_submission_start();
-
-  DefaultTextureList &dtxl = *draw_ctx->viewport_texture_list_get();
-  instance.draw_image_render(manager, dtxl.depth, dtxl.depth_in_front, dtxl.color, engine);
-
-  DRW_submission_end();
-
-  /* Write image */
-  const char *viewname = RE_GetActiveRenderView(engine->re);
-  write_render_color_output(layer, viewname, dfbl->default_fb, &rect);
-  write_render_z_output(layer, viewname, dfbl->default_fb, &rect, winmat);
-}
-
-static void workbench_render_update_passes(RenderEngine *engine,
-                                           Scene *scene,
-                                           ViewLayer *view_layer)
-{
-  if (view_layer->passflag & SCE_PASS_COMBINED) {
-    RE_engine_register_pass(engine, scene, view_layer, RE_PASSNAME_COMBINED, 4, "RGBA", SOCK_RGBA);
-  }
-  if (view_layer->passflag & SCE_PASS_DEPTH) {
-    RE_engine_register_pass(engine, scene, view_layer, RE_PASSNAME_DEPTH, 1, "Z", SOCK_FLOAT);
-  }
-}
-
-static void workbench_render(RenderEngine *engine, Depsgraph *depsgraph)
-{
-  DRW_render_to_image(engine, depsgraph, workbench_render_to_image, [](RenderResult *) {});
-}
-
 RenderEngineType DRW_engine_viewport_workbench_type = {
     /*next*/ nullptr,
     /*prev*/ nullptr,
@@ -821,7 +613,7 @@ RenderEngineType DRW_engine_viewport_workbench_type = {
     /*name*/ N_("Workbench"),
     /*flag*/ RE_INTERNAL | RE_USE_STEREO_VIEWPORT | RE_USE_GPU_CONTEXT,
     /*update*/ nullptr,
-    /*render*/ &workbench_render,
+    /*render*/ nullptr,
     /*render_frame_finish*/ nullptr,
     /*draw*/ nullptr,
     /*bake*/ nullptr,
@@ -830,7 +622,7 @@ RenderEngineType DRW_engine_viewport_workbench_type = {
     /*view_pause*/ nullptr,
     /*view_resume*/ nullptr,
     /*update_script_node*/ nullptr,
-    /*update_render_passes*/ &workbench_render_update_passes,
+    /*update_render_passes*/ nullptr,
     /*update_custom_camera*/ nullptr,
     /*rna_ext*/
     {
