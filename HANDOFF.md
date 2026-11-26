@@ -151,9 +151,10 @@ O artefato do CI contém a instalação em um `.tar.gz`, que preserva a
 permissão de execução. Esse pacote usa as bibliotecas de sistema do Ubuntu
 26.04, inclusive o Python 3.14.
 
-Para verificar compatibilidade com uma versão anterior, gere os arquivos
-em um diretório de teste com o Blender dessa versão. Faça a verificação
-de cada caso em um processo separado do BlenderiX instalado.
+O CI também roda `build_files/ci/test_legacy.sh "$install_dir/blender"` com as
+amostras versionadas em `build_files/ci/fixtures/`. Para verificar outra versão
+anterior ou regenerar as amostras, use o Blender da versão correspondente.
+Cada caso é verificado em um processo separado do BlenderiX instalado.
 
 ```bash
 fixtures="$(mktemp -d)"
@@ -189,7 +190,11 @@ O link ainda usa `-Wl,--unresolved-symbols=ignore-all` em
 podem ser identificadas configurando um segundo diretório de build com as
 mesmas opções e `-DWITH_STRICT_BLENDER_LINK=ON`. A primeira execução identificou
 1.883 símbolos indefinidos distintos, principalmente em código de subsistemas
-removidos. O CMake com `WITH_GTESTS=ON` gerou alvos incompletos e o CTest
+removidos. A restauração da biblioteca interna de funções do Blender
+(`0cb6498d8a0c4b965ab0f5c55830034594c66812`), com headers idênticos aos já
+presentes no fork, reduziu o diagnóstico para 1.844 símbolos distintos e
+eliminou as referências indefinidas a `blender::fn`.
+O CMake com `WITH_GTESTS=ON` gerou alvos incompletos e o CTest
 listou zero testes.
 
 ---

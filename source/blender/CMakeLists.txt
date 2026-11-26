@@ -126,6 +126,7 @@ add_subdirectory(blenloader)
 add_subdirectory(blenloader_core)
 add_subdirectory(depsgraph)
 add_subdirectory(geometry)
+add_subdirectory(functions)
 add_subdirectory(gpu)
 add_subdirectory(gpu/shaders)
 add_subdirectory(gpu/shaders/nodes)
@@ -158,7 +159,6 @@ foreach(_stub_target
   bf_asset_system
   bf_compositor
   bf_freestyle
-  bf_functions
   bf_ikplugin
   bf_nodes
   bf_render

@@ -106,6 +106,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/blenderix/licenses"
           cp "$RUNNER_TEMP/openimageio/share/licenses/OpenImageIO/LICENSE.md" "$RUNNER_TEMP/blenderix/licenses/OpenImageIO.md"
           build_files/ci/test_installed.sh "$RUNNER_TEMP/blenderix/blender"
+          build_files/ci/test_legacy.sh "$RUNNER_TEMP/blenderix/blender"
 
       - name: Archive Linux installation
         run: tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/blenderix-linux-x86_64.tar.gz" blenderix
