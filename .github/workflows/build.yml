@@ -19,11 +19,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            cmake ninja-build build-essential gcc-14 g++-14 python3.14-dev git-lfs \
+            cmake ninja-build build-essential gcc-14 g++-14 python3.14-dev git-lfs pkg-config \
             libx11-dev libxxf86vm-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev \
             libgl-dev libepoxy-dev libfreetype-dev libpng-dev libjpeg-dev zlib1g-dev libzstd-dev \
             libtbb-dev libgmp-dev \
-            libfmt-dev libopenexr-dev libopenimageio-dev openimageio-tools libopencolorio-dev libbrotli-dev libpugixml-dev \
+            libfmt-dev libopenexr-dev libtiff-dev libopenjp2-7-dev libwebp-dev libheif-dev robin-map-dev libopencolorio-dev libbrotli-dev libpugixml-dev \
             && sudo mkdir -p /include /usr/include/opencv4
 
       - name: Restore Blender assets
@@ -31,6 +31,9 @@ jobs:
 
       - name: Install pinned Eigen
         run: cmake -DEIGEN_PREFIX="$RUNNER_TEMP/eigen" -P build_files/ci/install_eigen.cmake
+
+      - name: Install pinned OpenImageIO
+        run: cmake -DOIIO_PREFIX="$RUNNER_TEMP/openimageio" -P build_files/ci/install_openimageio.cmake
 
       - name: Configure CMake (mesh-only)
         run: |
@@ -44,6 +47,8 @@ jobs:
             -DCMAKE_CXX_COMPILER=g++-14 \
             -DPYTHON_VERSION=3.14 \
             -DEigen3_DIR="$RUNNER_TEMP/eigen/share/eigen3/cmake" \
+            -DOpenImageIO_DIR="$RUNNER_TEMP/openimageio/lib/cmake/OpenImageIO" \
+            '-DCMAKE_INSTALL_RPATH=$ORIGIN/lib' \
             -DWITH_MOD_REMESH=ON \
             -DWITH_INSTALL_PORTABLE=ON \
             -DWITH_LIBS_PRECOMPILED=OFF \
@@ -96,6 +101,10 @@ jobs:
       - name: Test installed application
         run: |
           cmake --install ../build --prefix "$RUNNER_TEMP/blenderix"
+          mkdir -p "$RUNNER_TEMP/blenderix/lib"
+          cp -a "$RUNNER_TEMP/openimageio/lib/"libOpenImageIO*.so* "$RUNNER_TEMP/blenderix/lib/"
+          mkdir -p "$RUNNER_TEMP/blenderix/licenses"
+          cp "$RUNNER_TEMP/openimageio/share/licenses/OpenImageIO/LICENSE.md" "$RUNNER_TEMP/blenderix/licenses/OpenImageIO.md"
           build_files/ci/test_installed.sh "$RUNNER_TEMP/blenderix/blender"
 
       - name: Archive Linux installation

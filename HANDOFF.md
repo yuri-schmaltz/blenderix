@@ -119,22 +119,28 @@ Marca do aplicativo: **BlenderiX** (logo, metainfo e ícone próprios — ver §
 
 Use o [workflow Linux](.github/workflows/build.yml) como referência de dependências e
 opções. Ele usa Ubuntu 26.04, GCC 14 e Python 3.14. Em um clone limpo, com
-Git LFS e as dependências do workflow instaladas, prepare os recursos e o Eigen.
+Git LFS e as dependências do workflow instaladas, prepare os recursos e as versões de Eigen e OpenImageIO declaradas no código.
 
 ```bash
 build_files/ci/restore_lfs.sh
 eigen_prefix="$(mktemp -d)"
 cmake -DEIGEN_PREFIX="$eigen_prefix" -P build_files/ci/install_eigen.cmake
+oiio_prefix="$(mktemp -d)"
+cmake -DOIIO_PREFIX="$oiio_prefix" -P build_files/ci/install_openimageio.cmake
 ```
 
 Use as opções do passo **Configure CMake (mesh-only)**, com
-`Eigen3_DIR=$eigen_prefix/share/eigen3/cmake`. Depois, compile e valide a instalação.
+`Eigen3_DIR=$eigen_prefix/share/eigen3/cmake` e
+`OpenImageIO_DIR=$oiio_prefix/lib/cmake/OpenImageIO`. Depois, compile e valide a
+instalação.
 
 ```bash
 cmake --build ../build --target bf_intern_dualcon --parallel
 cmake --build ../build --parallel
 install_dir="$(mktemp -d)"
 cmake --install ../build --prefix "$install_dir"
+mkdir -p "$install_dir/lib"
+cp -a "$oiio_prefix/lib/"libOpenImageIO*.so* "$install_dir/lib/"
 build_files/ci/test_installed.sh "$install_dir/blender"
 ```
 
