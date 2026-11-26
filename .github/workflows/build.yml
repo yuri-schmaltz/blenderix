@@ -19,7 +19,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            cmake ninja-build build-essential gcc-14 g++-14 python3.14-dev git-lfs pkg-config \
+            cmake ninja-build build-essential gcc-14 g++-14 python3.14-dev git-lfs pkg-config xvfb xauth libgl1-mesa-dri \
             libx11-dev libxxf86vm-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev \
             libgl-dev libepoxy-dev libfreetype-dev libpng-dev libjpeg-dev zlib1g-dev libzstd-dev \
             libtbb-dev libgmp-dev \
@@ -107,6 +107,18 @@ jobs:
           cp "$RUNNER_TEMP/openimageio/share/licenses/OpenImageIO/LICENSE.md" "$RUNNER_TEMP/blenderix/licenses/OpenImageIO.md"
           build_files/ci/test_installed.sh "$RUNNER_TEMP/blenderix/blender"
           build_files/ci/test_legacy.sh "$RUNNER_TEMP/blenderix/blender"
+
+      - name: Test graphical modeling and file I/O
+        run: |
+          blender="$RUNNER_TEMP/blenderix/blender"
+          export BLENDERIX_GUI_DIR="$RUNNER_TEMP/gui-acceptance"
+          export LIBGL_ALWAYS_SOFTWARE=1
+          unset WAYLAND_DISPLAY
+          timeout 60s xvfb-run -a "$blender" --factory-startup --python-exit-code 1 \
+            --python build_files/ci/graphical_acceptance.py
+          BLENDERIX_GUI_REOPEN=1 timeout 60s xvfb-run -a "$blender" --factory-startup \
+            "$BLENDERIX_GUI_DIR/acceptance.blend" --python-exit-code 1 \
+            --python build_files/ci/graphical_acceptance.py
 
       - name: Archive Linux installation
         run: tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/blenderix-linux-x86_64.tar.gz" blenderix

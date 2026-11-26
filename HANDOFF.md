@@ -169,7 +169,10 @@ done
 A matriz passou no BlenderiX com amostras provenientes do Blender 3.6.0 e
 4.5.0. Cada versão passou pelos casos de malha, Bevel, biblioteca vinculada e
 cena mista. O caso misto preservou a malha ao abrir, salvar e reabrir
-e descartou a câmera e a animação. Esses resultados se limitam às amostras.
+e descartou a câmera e a animação. A amostra do Blender 3.6 com Auto Smooth
+também passou. A migração grava as arestas sharp na malha original, de modo
+que o ângulo fica aplicado à malha base e não é recalculado sobre modificadores
+posteriores. Esses resultados se limitam às amostras.
 
 O teste gráfico precisa de uma sessão de desktop ou de um servidor X virtual.
 Ele redesenha o viewport, edita uma malha, aplica um modificador, verifica

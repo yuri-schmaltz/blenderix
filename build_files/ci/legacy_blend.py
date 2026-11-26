@@ -2,19 +2,25 @@
 
 import argparse
 import itertools
+import math
 import sys
 from pathlib import Path
 
 import bpy
 
 
-def create_fixtures(directory):
-    directory.mkdir(parents=True, exist_ok=True)
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+def create_cube():
     bpy.ops.mesh.primitive_cube_add(size=2)
     cube = bpy.context.object
     cube.name = "Legacy Mesh"
     cube["fixture_marker"] = 42
+    return cube
+
+
+def create_fixtures(directory):
+    directory.mkdir(parents=True, exist_ok=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    cube = create_cube()
     bpy.ops.wm.save_as_mainfile(filepath=str(directory / "mesh.blend"), compress=False)
 
     modifier = cube.modifiers.new("Legacy Bevel", "BEVEL")
@@ -35,6 +41,15 @@ def create_fixtures(directory):
         filepath=str(directory / "linked.blend"), compress=False, relative_remap=True
     )
 
+    if bpy.app.version < (4, 1):
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        mesh = create_cube().data
+        mesh.use_auto_smooth = True
+        mesh.auto_smooth_angle = math.radians(30)
+        for face in mesh.polygons:
+            face.use_smooth = True
+        bpy.ops.wm.save_as_mainfile(filepath=str(directory / "auto-smooth.blend"), compress=False)
+
 
 def check_fixture(case, path):
     assert bpy.ops.wm.open_mainfile(filepath=str(path)) == {"FINISHED"}
@@ -51,6 +66,13 @@ def check_fixture(case, path):
         assert bevel.type == "BEVEL" and bevel.segments == 2 and bevel.width == 0.125
         evaluated = cube.evaluated_get(bpy.context.evaluated_depsgraph_get())
         assert len(evaluated.data.vertices) > len(mesh.vertices)
+    if case == "auto-smooth":
+        assert all(face.use_smooth for face in mesh.polygons)
+        if hasattr(mesh, "use_auto_smooth"):
+            assert mesh.use_auto_smooth
+        else:
+            sharp_edges = mesh.attributes["sharp_edge"]
+            assert len(sharp_edges.data) == 12 and all(edge.value for edge in sharp_edges.data)
     if case == "linked":
         assert cube.library and Path(bpy.path.abspath(cube.library.filepath)).is_file()
     if case == "mixed":
@@ -66,7 +88,7 @@ def check_fixture(case, path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
-    parser.add_argument("--case", choices=("mesh", "modifier", "linked", "mixed"))
+    parser.add_argument("--case", choices=("mesh", "modifier", "linked", "mixed", "auto-smooth"))
     args = parser.parse_args(sys.argv[sys.argv.index("--") + 1 :])
     directory = args.directory.resolve()
     if args.case is None:

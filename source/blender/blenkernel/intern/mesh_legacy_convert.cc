@@ -18,6 +18,7 @@
 #include "DNA_object_types.h"
 
 #include "BLI_array_utils.hh"
+#include "BLI_color_types.hh"
 #include "BLI_listbase.hh"
 #include "BLI_map.hh"
 #include "BLI_math_geom_c.hh"
@@ -39,7 +40,6 @@
 #include "BKE_attribute_legacy_convert.hh"
 #include "BKE_customdata.hh"
 #include "BKE_global.hh"
-#include "BKE_idprop.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_main.hh"
 #include "BKE_main_namemap.hh"
@@ -47,13 +47,6 @@
 #include "BKE_mesh_legacy_convert.hh"
 #include "BKE_modifier.hh"
 #include "BKE_multires.hh"
-#include "BKE_node.hh"
-#include "BKE_node_runtime.hh"
-#include "BKE_node_tree_update.hh"
-
-#include "NOD_geometry_nodes_srna.hh"
-
-#include "BLT_translation.hh"
 
 namespace blender {
 
@@ -2052,350 +2045,37 @@ void BKE_mesh_legacy_convert_polys_to_offsets(Mesh *mesh)
 /** \name Auto Smooth Conversion
  * \{ */
 
-namespace bke {
-
-static bNodeTree *add_auto_smooth_node_tree(Main &bmain, Library *owner_library)
-{
-  bNodeTree *group = node_tree_add_in_lib(
-      &bmain, owner_library, DATA_("Auto Smooth"), "GeometryNodeTree");
-  if (!group->geometry_node_asset_traits) {
-    group->geometry_node_asset_traits = MEM_new<GeometryNodeAssetTraits>(__func__);
-  }
-  group->geometry_node_asset_traits->flag |= GEO_NODE_ASSET_MODIFIER;
-
-  group->tree_interface.add_socket(
-      DATA_("Geometry"), "", "NodeSocketGeometry", NODE_INTERFACE_SOCKET_OUTPUT, nullptr);
-  group->tree_interface.add_socket(
-      DATA_("Geometry"), "", "NodeSocketGeometry", NODE_INTERFACE_SOCKET_INPUT, nullptr);
-  bNodeTreeInterfaceSocket *angle_io_socket = group->tree_interface.add_socket(
-      DATA_("Angle"), "", "NodeSocketFloat", NODE_INTERFACE_SOCKET_INPUT, nullptr);
-  auto &angle_data = *static_cast<bNodeSocketValueFloat *>(angle_io_socket->socket_data);
-  angle_data.min = 0.0f;
-  angle_data.max = DEG2RADF(180.0f);
-  angle_data.subtype = PROP_ANGLE;
-
-  bNode *group_output = node_add_node(nullptr, *group, "NodeGroupOutput"_ustr);
-  group_output->location[0] = 480.0f;
-  group_output->location[1] = -100.0f;
-  bNode *group_input_angle = node_add_node(nullptr, *group, "NodeGroupInput"_ustr);
-  group_input_angle->location[0] = -420.0f;
-  group_input_angle->location[1] = -300.0f;
-  for (bNodeSocket &socket : group_input_angle->outputs) {
-    if (!STREQ(socket.identifier, "Socket_2")) {
-      socket.flag |= SOCK_HIDDEN;
-    }
-  }
-  bNode *group_input_mesh = node_add_node(nullptr, *group, "NodeGroupInput"_ustr);
-  group_input_mesh->location[0] = -60.0f;
-  group_input_mesh->location[1] = -100.0f;
-  for (bNodeSocket &socket : group_input_mesh->outputs) {
-    if (!STREQ(socket.identifier, "Socket_1")) {
-      socket.flag |= SOCK_HIDDEN;
-    }
-  }
-  bNode *shade_smooth_edge = node_add_node(nullptr, *group, "GeometryNodeSetShadeSmooth"_ustr);
-  shade_smooth_edge->custom1 = int16_t(bke::AttrDomain::Edge);
-  shade_smooth_edge->location[0] = 120.0f;
-  shade_smooth_edge->location[1] = -100.0f;
-  bNode *shade_smooth_face = node_add_node(nullptr, *group, "GeometryNodeSetShadeSmooth"_ustr);
-  shade_smooth_face->custom1 = int16_t(bke::AttrDomain::Face);
-  shade_smooth_face->location[0] = 300.0f;
-  shade_smooth_face->location[1] = -100.0f;
-  bNode *edge_angle = node_add_node(nullptr, *group, "GeometryNodeInputMeshEdgeAngle"_ustr);
-  edge_angle->location[0] = -420.0f;
-  edge_angle->location[1] = -220.0f;
-  bNode *edge_smooth = node_add_node(nullptr, *group, "GeometryNodeInputEdgeSmooth"_ustr);
-  edge_smooth->location[0] = -60.0f;
-  edge_smooth->location[1] = -160.0f;
-  bNode *face_smooth = node_add_node(nullptr, *group, "GeometryNodeInputShadeSmooth"_ustr);
-  face_smooth->location[0] = -240.0f;
-  face_smooth->location[1] = -340.0f;
-  bNode *boolean_and = node_add_node(nullptr, *group, "FunctionNodeBooleanMath"_ustr);
-  boolean_and->custom1 = NODE_BOOLEAN_MATH_AND;
-  boolean_and->location[0] = -60.0f;
-  boolean_and->location[1] = -220.0f;
-  bNode *less_than_or_equal = node_add_node(nullptr, *group, "FunctionNodeCompare"_ustr);
-  static_cast<NodeFunctionCompare *>(less_than_or_equal->storage)->operation =
-      NODE_COMPARE_LESS_EQUAL;
-  less_than_or_equal->location[0] = -240.0f;
-  less_than_or_equal->location[1] = -180.0f;
-
-  node_add_link(*group,
-                *edge_angle,
-                *node_find_socket(*edge_angle, SOCK_OUT, "Unsigned Angle"_ustr),
-                *less_than_or_equal,
-                *node_find_socket(*less_than_or_equal, SOCK_IN, "A"_ustr));
-  node_add_link(*group,
-                *shade_smooth_face,
-                *node_find_socket(*shade_smooth_face, SOCK_OUT, "Geometry"_ustr),
-                *group_output,
-                *node_find_socket(*group_output, SOCK_IN, "Socket_0"_ustr));
-  node_add_link(*group,
-                *group_input_angle,
-                *node_find_socket(*group_input_angle, SOCK_OUT, "Socket_2"_ustr),
-                *less_than_or_equal,
-                *node_find_socket(*less_than_or_equal, SOCK_IN, "B"_ustr));
-  node_add_link(*group,
-                *less_than_or_equal,
-                *node_find_socket(*less_than_or_equal, SOCK_OUT, "Result"_ustr),
-                *boolean_and,
-                *node_find_socket(*boolean_and, SOCK_IN, "Boolean"_ustr));
-  node_add_link(*group,
-                *face_smooth,
-                *node_find_socket(*face_smooth, SOCK_OUT, "Smooth"_ustr),
-                *boolean_and,
-                *node_find_socket(*boolean_and, SOCK_IN, "Boolean_001"_ustr));
-  node_add_link(*group,
-                *group_input_mesh,
-                *node_find_socket(*group_input_mesh, SOCK_OUT, "Socket_1"_ustr),
-                *shade_smooth_edge,
-                *node_find_socket(*shade_smooth_edge, SOCK_IN, "Geometry"_ustr));
-  node_add_link(*group,
-                *edge_smooth,
-                *node_find_socket(*edge_smooth, SOCK_OUT, "Smooth"_ustr),
-                *shade_smooth_edge,
-                *node_find_socket(*shade_smooth_edge, SOCK_IN, "Selection"_ustr));
-  node_add_link(*group,
-                *shade_smooth_edge,
-                *node_find_socket(*shade_smooth_edge, SOCK_OUT, "Geometry"_ustr),
-                *shade_smooth_face,
-                *node_find_socket(*shade_smooth_face, SOCK_IN, "Geometry"_ustr));
-  node_add_link(*group,
-                *boolean_and,
-                *node_find_socket(*boolean_and, SOCK_OUT, "Boolean"_ustr),
-                *shade_smooth_edge,
-                *node_find_socket(*shade_smooth_edge, SOCK_IN, "Shade Smooth"_ustr));
-
-  for (bNode &node : group->nodes) {
-    node_set_selected(node, false);
-  }
-
-  BKE_ntree_update_after_single_tree_change(bmain, *group);
-
-  return group;
-}
-
-static VectorSet<const bNodeSocket *> build_socket_indices(const Span<const bNode *> nodes)
-{
-  VectorSet<const bNodeSocket *> result;
-  for (const bNode *node : nodes) {
-    for (const bNodeSocket &socket : node->inputs) {
-      result.add_new(&socket);
-    }
-    for (const bNodeSocket &socket : node->outputs) {
-      result.add_new(&socket);
-    }
-  }
-  return result;
-}
-
-/* Checks if the node group is the same as the one generated by #create_auto_smooth_modifier. */
-static bool is_auto_smooth_node_tree(const bNodeTree &group)
-{
-  if (group.type != NTREE_GEOMETRY) {
-    return false;
-  }
-  const Span<const bNode *> nodes = group.all_nodes();
-  if (nodes.size() != 10) {
-    return false;
-  }
-  if (!group.geometry_node_asset_traits) {
-    return false;
-  }
-  if (group.geometry_node_asset_traits->flag != GEO_NODE_ASSET_MODIFIER) {
-    return false;
-  }
-  const std::array<StringRef, 10> idnames({"NodeGroupOutput",
-                                           "NodeGroupInput",
-                                           "NodeGroupInput",
-                                           "GeometryNodeSetShadeSmooth",
-                                           "GeometryNodeSetShadeSmooth",
-                                           "GeometryNodeInputMeshEdgeAngle",
-                                           "GeometryNodeInputEdgeSmooth",
-                                           "GeometryNodeInputShadeSmooth",
-                                           "FunctionNodeBooleanMath",
-                                           "FunctionNodeCompare"});
-  for (const int i : nodes.index_range()) {
-    if (nodes[i]->idname != idnames[i]) {
-      return false;
-    }
-  }
-  if (nodes[3]->custom1 != int16_t(bke::AttrDomain::Edge)) {
-    return false;
-  }
-  if (nodes[4]->inputs.last()->default_value_typed<bNodeSocketValueBoolean>()->value != 1) {
-    return false;
-  }
-  if (nodes[4]->custom1 != int16_t(bke::AttrDomain::Face)) {
-    return false;
-  }
-  if (nodes[8]->custom1 != NODE_BOOLEAN_MATH_AND) {
-    return false;
-  }
-  if (static_cast<NodeFunctionCompare *>(nodes[9]->storage)->operation != NODE_COMPARE_LESS_EQUAL)
-  {
-    return false;
-  }
-  if (group.links.count() != 9) {
-    return false;
-  }
-
-  const std::array<int, 9> link_from_socket_indices({16, 15, 3, 36, 19, 5, 18, 11, 22});
-  const std::array<int, 9> link_to_socket_indices({23, 0, 24, 20, 21, 8, 9, 12, 10});
-  const VectorSet<const bNodeSocket *> socket_indices = build_socket_indices(nodes);
-
-  for (const auto [i, link] : group.links.enumerate()) {
-    if (socket_indices.index_of(link.fromsock) != link_from_socket_indices[i]) {
-      return false;
-    }
-    if (socket_indices.index_of(link.tosock) != link_to_socket_indices[i]) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-static ModifierData *create_auto_smooth_modifier(
-    Object &object,
-    const FunctionRef<bNodeTree *(Library *owner_library)> get_node_group,
-    const float angle)
-{
-  auto *md = reinterpret_cast<NodesModifierData *>(BKE_modifier_new(eModifierType_Nodes));
-  STRNCPY_UTF8(md->modifier.name, DATA_("Auto Smooth"));
-  BKE_modifier_unique_name(&object.modifiers, &md->modifier);
-  md->node_group = get_node_group(object.id.lib);
-  id_us_plus(&md->node_group->id);
-
-  IDProperty *system_props = bke::idprop::create_group("NodesModifierProperties").release();
-
-  IDProperty *inputs = bke::idprop::create_group("inputs").release();
-  IDP_AddToGroup(system_props, inputs);
-
-  IDProperty *angle_prop_group = bke::idprop::create_group("Socket_2").release();
-  IDP_AddToGroup(inputs, angle_prop_group);
-
-  IDProperty *type_prop =
-      idprop::create("type", int(nodes::GeometryNodesInputType::Value)).release();
-  IDP_AddToGroup(angle_prop_group, type_prop);
-
-  IDProperty *angle_prop = idprop::create("value", angle).release();
-  IDP_AddToGroup(angle_prop_group, angle_prop);
-
-  md->modifier.system_properties = system_props;
-
-  BKE_modifiers_persistent_uid_init(object, md->modifier);
-  return &md->modifier;
-}
-
-}  // namespace bke
-
 void BKE_main_mesh_legacy_convert_auto_smooth(Main &bmain)
 {
-  using namespace bke;
-
-  /* Add the node group lazily and share it among all objects in the same library. */
-  Map<Library *, bNodeTree *> group_by_library;
-  const auto add_node_group = [&](Library *owner_library) {
-    if (bNodeTree **group = group_by_library.lookup_ptr(owner_library)) {
-      /* Node tree has already been found/created for this versioning call. */
-      return *group;
-    }
-    /* Try to find an existing group added by previous versioning to avoid adding duplicates. */
-    for (bNodeTree &existing_group : bmain.nodetrees) {
-      if (existing_group.id.lib != owner_library) {
-        continue;
-      }
-      if (is_auto_smooth_node_tree(existing_group)) {
-        group_by_library.add_new(owner_library, &existing_group);
-        return &existing_group;
-      }
-    }
-    bNodeTree *new_group = add_auto_smooth_node_tree(bmain, owner_library);
-    /* Remove the default user. The count is tracked manually when assigning to modifiers. */
-    id_us_min(&new_group->id);
-    group_by_library.add_new(owner_library, new_group);
-    return new_group;
-  };
-
-  for (Object &object : bmain.objects) {
-    if (object.type != OB_MESH) {
-      continue;
-    }
-    Mesh *mesh = id_cast<Mesh *>(object.data);
-    const float angle = mesh->smoothresh_legacy;
-    if (!(mesh->flag & ME_AUTOSMOOTH_LEGACY)) {
-      continue;
-    }
-
-    /* Auto-smooth disabled sharp edge tagging when the evaluated mesh had custom normals.
-     * When the original mesh has custom normals, that's a good sign the evaluated mesh will
-     * have custom normals as well. */
-    bool has_custom_normals = mesh->attribute_storage.wrap().lookup("custom_normal");
-    if (has_custom_normals) {
-      continue;
-    }
-
-    /* The "Weighted Normal" modifier has a "Keep Sharp" option that used to recalculate the sharp
-     * edge tags based on the mesh's smoothing angle. To keep the same behavior, a new modifier has
-     * to be added before that modifier when the option is on. */
-    for (ModifierData &md : object.modifiers) {
-      if (ELEM(md.type, eModifierType_WeightedNormal, eModifierType_NormalEdit)) {
-        has_custom_normals = true;
-      }
-      if (md.type == eModifierType_Bevel) {
-        BevelModifierData *bmd = reinterpret_cast<BevelModifierData *>(&md);
-        if (bmd->flags & MOD_BEVEL_HARDEN_NORMALS) {
-          has_custom_normals = true;
-        }
-      }
-      if (md.type == eModifierType_WeightedNormal) {
-        WeightedNormalModifierData *nmd = reinterpret_cast<WeightedNormalModifierData *>(&md);
-        if ((nmd->flag & MOD_WEIGHTEDNORMAL_KEEP_SHARP) != 0) {
-          ModifierData *new_md = create_auto_smooth_modifier(object, add_node_group, angle);
-          BLI_insertlinkbefore(&object.modifiers, object.modifiers.last(), new_md);
-        }
-      }
-      if (md.type == eModifierType_Nodes) {
-        NodesModifierData *nmd = reinterpret_cast<NodesModifierData *>(&md);
-        if (nmd->node_group && !ID_MISSING(nmd->node_group) &&
-            is_auto_smooth_node_tree(*nmd->node_group))
-        {
-          /* This object has already been processed by versioning. If the mesh is linked from
-           * another file its auto-smooth flag may not be cleared, so this check is necessary to
-           * avoid adding a duplicate modifier. */
-          has_custom_normals = true;
-          break;
-        }
-      }
-    }
-
-    /* Some modifiers always generate custom normals which disabled sharp edge tagging, making
-     * adding a modifier at the end unnecessary. Conceptually this is similar to checking if the
-     * evaluated mesh had custom normals. */
-    if (has_custom_normals) {
-      continue;
-    }
-
-    ModifierData *last_md = object.modifiers.last();
-    ModifierData *new_md = create_auto_smooth_modifier(object, add_node_group, angle);
-    if (last_md && last_md->type == eModifierType_Subsurf && has_custom_normals &&
-        (reinterpret_cast<SubsurfModifierData *>(last_md)->flags &
-         eSubsurfModifierFlag_UseCustomNormals) != 0)
-    {
-      /* Add the auto smooth node group before the last subdivision surface modifier if possible.
-       * Subdivision surface modifiers have special handling for interpolating custom normals. */
-      BLI_insertlinkbefore(&object.modifiers, object.modifiers.last(), new_md);
-    }
-    else {
-      BLI_addtail(&object.modifiers, new_md);
-    }
-  }
-
   for (Mesh &mesh : bmain.meshes) {
+    if (!(mesh.flag & ME_AUTOSMOOTH_LEGACY)) {
+      continue;
+    }
     mesh.flag &= ~ME_AUTOSMOOTH_LEGACY;
+
+    /* Bake the smoothing angle onto the original mesh as sharp edges. */
+    bke::MutableAttributeAccessor attributes = mesh.attributes_for_write();
+    if (attributes.contains("custom_normal") ||
+        CustomData_has_layer(&mesh.corner_data, CD_CUSTOMLOOPNORMAL))
+    {
+      continue;
+    }
+    bke::SpanAttributeWriter<bool> sharp_edges = attributes.ensure_for_write_span<bool>(
+        "sharp_edge", bke::AttrDomain::Edge);
+    const VArraySpan<bool> sharp_faces = *attributes.lookup<bool>("sharp_face", bke::AttrDomain::Face);
+    bke::mesh::edges_sharp_from_angle_set(mesh.faces(),
+                                         mesh.corner_verts(),
+                                         mesh.corner_edges(),
+                                         mesh.face_normals(),
+                                         mesh.corner_to_face_map(),
+                                         sharp_faces,
+                                         mesh.smoothresh_legacy,
+                                         sharp_edges.span);
+    sharp_edges.finish();
   }
 }
+
+/** \} */
 
 namespace bke {
 
