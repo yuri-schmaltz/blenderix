@@ -191,6 +191,11 @@ BLENDERIX_GUI_REOPEN=1 "$install_dir/blender" --factory-startup \
   --python build_files/ci/graphical_acceptance.py
 ```
 
+A aceitação gráfica no CI usa `--debug-memory` e falha se o aplicativo
+registrar blocos não liberados no encerramento. Após restaurar a liberação
+dos shaders e dos motores de viewport, os testes de edição e reabertura
+terminaram sem esse aviso no ambiente de validação local.
+
 O link ainda usa `-Wl,--unresolved-symbols=ignore-all` em
 `source/creator/CMakeLists.txt`. Referências a implementações removidas
 podem ser identificadas configurando um segundo diretório de build com as

@@ -639,6 +639,8 @@ void WM_exit_ex(bContext *C, const bool do_python_exit, const bool do_user_exit_
     ui::exit();
     GPU_shader_cache_dir_clear_old();
     BKE_image_free_gpu_fallback();
+    DRW_engines_free();
+    DRW_module_exit();
     GPU_exit();
     DRW_gpu_context_disable_ex(false);
     DRW_gpu_context_destroy();

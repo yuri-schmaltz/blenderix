@@ -110,15 +110,19 @@ jobs:
 
       - name: Test graphical modeling and file I/O
         run: |
+          set -o pipefail
           blender="$RUNNER_TEMP/blenderix/blender"
           export BLENDERIX_GUI_DIR="$RUNNER_TEMP/gui-acceptance"
           export LIBGL_ALWAYS_SOFTWARE=1
           unset WAYLAND_DISPLAY
-          timeout 60s xvfb-run -a "$blender" --factory-startup --python-exit-code 1 \
-            --python build_files/ci/graphical_acceptance.py
-          BLENDERIX_GUI_REOPEN=1 timeout 60s xvfb-run -a "$blender" --factory-startup \
+          timeout 60s xvfb-run -a "$blender" --factory-startup --debug-memory --python-exit-code 1 \
+            --python build_files/ci/graphical_acceptance.py 2>&1 | tee "$RUNNER_TEMP/graphical-edit.log"
+          BLENDERIX_GUI_REOPEN=1 timeout 60s xvfb-run -a "$blender" --factory-startup --debug-memory \
             "$BLENDERIX_GUI_DIR/acceptance.blend" --python-exit-code 1 \
-            --python build_files/ci/graphical_acceptance.py
+            --python build_files/ci/graphical_acceptance.py 2>&1 | tee "$RUNNER_TEMP/graphical-reopen.log"
+          if grep -Fq "Not freed memory blocks" "$RUNNER_TEMP"/graphical-{edit,reopen}.log; then
+            exit 1
+          fi
 
       - name: Archive Linux installation
         run: tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/blenderix-linux-x86_64.tar.gz" blenderix

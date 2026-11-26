@@ -2541,10 +2541,7 @@ void DRW_engines_register()
 
 void DRW_engines_free()
 {
-  eevee::Engine::free_static();
   workbench::Engine::free_static();
-  draw::gpencil::Engine::free_static();
-  image_engine::Engine::free_static();
   draw::overlay::Engine::free_static();
   draw::edit_select::Engine::free_static();
 #ifdef WITH_DRAW_DEBUG
