@@ -8,9 +8,7 @@
 
 #pragma once
 
-#include "draw_curves_private.hh"
-#include "draw_gsplat_private.hh"
-#include "draw_hair_private.hh"
+#include "GPU_vertex_format.hh"
 
 namespace blender {
 
@@ -19,11 +17,6 @@ class Shader;
 }  // namespace gpu
 
 /* draw_shader.cc */
-
-gpu::Shader *DRW_shader_curves_topology_get();
-gpu::Shader *DRW_shader_curves_refine_get(draw::CurvesEvalShader type);
-
-gpu::Shader *DRW_shader_gsplat_compute_get(draw::GSplatEvalShader type);
 
 gpu::Shader *DRW_shader_debug_draw_display_get();
 gpu::Shader *DRW_shader_draw_visibility_compute_get();

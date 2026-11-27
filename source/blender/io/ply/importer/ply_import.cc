@@ -260,47 +260,6 @@ static std::unique_ptr<PlyData> read_ply_to_data(const PLYImportParams &import_p
   }
 }
 
-static bool is_data_gaussian_splat(const PlyData &data)
-{
-  /* If PLY is not just vertices, it is not a gaussian splat.
-   *
-   * Ignore possible vertex normals, as some gaussian splats in the PLY format include vertex
-   * normals. For example, spz_to_ply writes vertex normals explaining that some applications
-   * require them to present (they are written as (0, 0, 0)).
-   */
-  if (!data.edges.is_empty() || !data.face_vertices.is_empty() || !data.face_sizes.is_empty() ||
-      !data.uv_coordinates.is_empty())
-  {
-    return false;
-  }
-
-  Set<std::string> attr_names;
-  for (const PlyCustomAttribute &attr : data.vertex_custom_attr) {
-    attr_names.add(attr.name);
-  }
-
-  constexpr auto required_attr_names = std::to_array<const char *>({"f_dc_0",
-                                                                    "f_dc_1",
-                                                                    "f_dc_2",
-                                                                    "opacity",
-                                                                    "scale_0",
-                                                                    "scale_1",
-                                                                    "scale_2",
-                                                                    "rot_0",
-                                                                    "rot_1",
-                                                                    "rot_2",
-                                                                    "rot_3"});
-  for (const char *required_attr_name : required_attr_names) {
-    if (!attr_names.contains(required_attr_name)) {
-      return false;
-    }
-  }
-
-  /* TODO(sergey): Check the f_rest_<i> attributes are consistent? */
-
-  return true;
-}
-
 /* File base name used for object and object-data. */
 static std::string get_datablock_name(const StringRefNull filepath)
 {

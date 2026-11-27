@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "BKE_material.hh"
 #include "BKE_paint.hh"
 
 #include "DNA_particle_types.h"

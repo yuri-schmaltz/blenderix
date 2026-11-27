@@ -145,7 +145,7 @@ class Cameras : Overlay {
     }
   }
 
-  void object_sync(Manager &manager,
+  void object_sync(Manager & /*manager*/,
                    const ObjectRef &ob_ref,
                    Resources &res,
                    const State &state) final
@@ -157,8 +157,6 @@ class Cameras : Overlay {
     const select::ID select_id = res.select_id(ob_ref);
 
     object_sync_extras(ob_ref, select_id, state, res);
-
-    object_sync_images(ob_ref, select_id, manager, state, res);
   }
 
   void end_sync(Resources &res, const State &state) final

@@ -5,7 +5,6 @@
 set(INC
   .
   intern
-  intern/lineart
   ../editors/include
   ../makesrna
   ../../../intern/eigen

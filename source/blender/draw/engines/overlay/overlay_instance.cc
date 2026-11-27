@@ -7,6 +7,7 @@
  */
 
 #include "BKE_colorband.hh"
+#include "BKE_material.hh"
 #include "DEG_depsgraph_query.hh"
 
 #include "ED_view3d.hh"

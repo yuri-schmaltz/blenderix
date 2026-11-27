@@ -490,37 +490,6 @@ static void create_result_ids(const RealizeInstancesOptions &options,
   }
 }
 
-static VectorSet<int> gather_all_fill_ids(const VArray<int> &fill_ids)
-{
-  if (fill_ids.is_empty()) {
-    return VectorSet<int>();
-  }
-  if (fill_ids.is_single()) {
-    const int fill_id = fill_ids.get_internal_single();
-    if (fill_id != 0) {
-      return VectorSet<int>({fill_id});
-    }
-  }
-  if (fill_ids.is_span()) {
-    VectorSet<int> index_by_fill_ids;
-    const Span<int> fill_ids_span = fill_ids.get_internal_span();
-    for (const int fill_id : fill_ids_span) {
-      if (fill_id != 0) {
-        index_by_fill_ids.add(fill_id);
-      }
-    }
-    return index_by_fill_ids;
-  }
-  VectorSet<int> index_by_fill_ids;
-  for (const int i : fill_ids.index_range()) {
-    const int fill_id = fill_ids[i];
-    if (fill_id != 0) {
-      index_by_fill_ids.add(fill_id);
-    }
-  }
-  return index_by_fill_ids;
-}
-
 struct TaskAttrInfo {
   Span<std::optional<GVArray>> attributes;
   const AttributeFallbacksArray &fallbacks;
