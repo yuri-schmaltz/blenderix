@@ -76,6 +76,13 @@
 
 #include "DRW_render.hh"
 #include "draw_cache.hh"
+#include "draw_manager.hh"
+#include "draw_view.hh"
+#include "draw_command.hh"
+#include "draw_state.hh"
+#include "GPU_debug.hh"
+#include "GPU_texture_pool.hh"
+#include "RE_engine.h"
 #include "draw_color_management.hh"
 #include "draw_common_c.hh"
 #include "draw_context_private.hh"

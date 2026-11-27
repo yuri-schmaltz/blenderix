@@ -9,6 +9,12 @@
  */
 
 #include "BKE_object.hh"
+#include "BLI_bounds.hh"
+#include "draw_command.hh"
+#include "draw_state.hh"
+#include "draw_view.hh"
+#include "GPU_state.hh"
+#include "GPU_viewport.hh"
 #include "BLI_math_bits.hh"
 #include "BLI_math_matrix.hh"
 #include "BLI_math_matrix_c.hh"

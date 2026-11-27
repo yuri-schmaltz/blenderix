@@ -7,6 +7,7 @@
  */
 
 #include "GPU_capabilities.hh"
+#include "draw_defines.hh"
 #include "GPU_compute.hh"
 #include "GPU_shader.hh"
 #include "GPU_state.hh"

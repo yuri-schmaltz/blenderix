@@ -15,6 +15,7 @@
 
 #include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/imageio.h>
+#include <OpenImageIO/image_span.h>
 
 #include "IMB_imbuf.hh"
 #include "IMB_imbuf_types.hh"

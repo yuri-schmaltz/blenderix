@@ -13,6 +13,7 @@
 #include "DRW_render.hh"
 #include "GPU_compute.hh"
 #include "GPU_debug.hh"
+#include "GPU_state.hh"
 
 #include "draw_context_private.hh"
 #include "draw_shader.hh"

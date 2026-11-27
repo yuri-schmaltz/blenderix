@@ -72,6 +72,7 @@
 #include "RNA_enum_types.hh"
 #include "RNA_prototypes.hh"
 
+#include "ED_armature.hh"
 #include "ED_mesh.hh"
 #include "ED_object.hh"
 #include "ED_object_vgroup.hh"
