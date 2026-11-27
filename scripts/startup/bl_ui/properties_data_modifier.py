@@ -6,6 +6,34 @@ import bpy
 from bpy.types import Panel, Menu, Operator
 
 
+# Keep this aligned with the modifier types registered by this mesh-focused build.
+AVAILABLE_MODIFIER_TYPES = frozenset({
+    'DATA_TRANSFER',
+    'NORMAL_EDIT',
+    'WEIGHTED_NORMAL',
+    'VERTEX_WEIGHT_EDIT',
+    'VERTEX_WEIGHT_MIX',
+    'VERTEX_WEIGHT_PROXIMITY',
+    'ARRAY',
+    'BEVEL',
+    'BOOLEAN',
+    'BUILD',
+    'DECIMATE',
+    'EDGE_SPLIT',
+    'MASK',
+    'MIRROR',
+    'MULTIRES',
+    'REMESH',
+    'SCREW',
+    'SKIN',
+    'SOLIDIFY',
+    'SUBSURF',
+    'TRIANGULATE',
+    'WELD',
+    'WIREFRAME',
+})
+
+
 class ModifierButtonsPanel:
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -26,6 +54,9 @@ class ModifierAddMenu:
 
     @classmethod
     def operator_modifier_add(cls, layout, mod_type):
+        if mod_type not in AVAILABLE_MODIFIER_TYPES:
+            return
+
         layout.operator(
             "object.modifier_add",
             text=cls.MODIFIER_TYPES_TO_LABELS[mod_type],
@@ -73,16 +104,12 @@ class OBJECT_MT_modifier_add(ModifierAddMenu, Menu):
             layout.menu("OBJECT_MT_modifier_add_edit")
         if ob_type in {'MESH', 'CURVE', 'FONT', 'SURFACE', 'VOLUME', 'GREASEPENCIL'}:
             layout.menu("OBJECT_MT_modifier_add_generate")
-        if ob_type in {'MESH', 'CURVE', 'FONT', 'SURFACE', 'LATTICE', 'VOLUME', 'GREASEPENCIL'}:
-            layout.menu("OBJECT_MT_modifier_add_deform")
         if ob_type in {'MESH'}:
             layout.menu("OBJECT_MT_modifier_add_normals")
-        if ob_type in {'MESH', 'CURVE', 'FONT', 'SURFACE', 'LATTICE'}:
-            layout.menu("OBJECT_MT_modifier_add_physics")
         if ob_type in {'GREASEPENCIL'}:
             layout.menu("OBJECT_MT_modifier_add_color")
 
-        if geometry_nodes_supported:
+        if geometry_nodes_supported and 'NODES' in AVAILABLE_MODIFIER_TYPES:
             layout.separator()
             self.operator_modifier_add(layout, 'NODES')
 
@@ -168,51 +195,6 @@ class OBJECT_MT_modifier_add_generate(ModifierAddMenu, Menu):
         layout.template_modifier_asset_menu_items(catalog_path=self.bl_label, skip_essentials=True)
 
 
-class OBJECT_MT_modifier_add_deform(ModifierAddMenu, Menu):
-    bl_label = "Deform"
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, context):
-        layout = self.layout
-        ob_type = context.object.type
-        if ob_type in {'MESH', 'CURVE', 'FONT', 'SURFACE', 'LATTICE'}:
-            self.operator_modifier_add(layout, 'ARMATURE')
-            self.operator_modifier_add(layout, 'CAST')
-            self.operator_modifier_add(layout, 'CURVE')
-        if ob_type == 'MESH':
-            self.operator_modifier_add(layout, 'DISPLACE')
-        if ob_type in {'MESH', 'CURVE', 'FONT', 'SURFACE', 'LATTICE'}:
-            self.operator_modifier_add(layout, 'HOOK')
-        if ob_type == 'MESH':
-            self.operator_modifier_add(layout, 'LAPLACIANDEFORM')
-        if ob_type in {'MESH', 'CURVE', 'FONT', 'SURFACE', 'LATTICE'}:
-            self.operator_modifier_add(layout, 'LATTICE')
-            self.operator_modifier_add(layout, 'MESH_DEFORM')
-            self.operator_modifier_add(layout, 'SHRINKWRAP')
-            self.operator_modifier_add(layout, 'SIMPLE_DEFORM')
-        if ob_type in {'MESH', 'CURVE', 'FONT', 'SURFACE'}:
-            self.operator_modifier_add(layout, 'SMOOTH')
-        if ob_type == 'MESH':
-            self.operator_modifier_add(layout, 'CORRECTIVE_SMOOTH')
-            self.operator_modifier_add(layout, 'LAPLACIANSMOOTH')
-            self.operator_modifier_add(layout, 'SURFACE_DEFORM')
-        if ob_type in {'MESH', 'CURVE', 'FONT', 'SURFACE', 'LATTICE'}:
-            self.operator_modifier_add(layout, 'WARP')
-            self.operator_modifier_add(layout, 'WAVE')
-        if ob_type == 'VOLUME':
-            self.operator_modifier_add(layout, 'VOLUME_DISPLACE')
-        if ob_type == 'GREASEPENCIL':
-            self.operator_modifier_add(layout, 'GREASE_PENCIL_ARMATURE')
-            self.operator_modifier_add(layout, 'GREASE_PENCIL_HOOK')
-            self.operator_modifier_add(layout, 'GREASE_PENCIL_LATTICE')
-            self.operator_modifier_add(layout, 'GREASE_PENCIL_NOISE')
-            self.operator_modifier_add(layout, 'GREASE_PENCIL_OFFSET')
-            self.operator_modifier_add(layout, 'GREASE_PENCIL_SHRINKWRAP')
-            self.operator_modifier_add(layout, 'GREASE_PENCIL_SMOOTH')
-            self.operator_modifier_add(layout, 'GREASE_PENCIL_THICKNESS')
-        layout.template_modifier_asset_menu_items(catalog_path=self.bl_label)
-
-
 class OBJECT_MT_modifier_add_normals(ModifierAddMenu, Menu):
     bl_label = "Normals"
     bl_options = {'SEARCH_ON_KEY_PRESS'}
@@ -223,27 +205,6 @@ class OBJECT_MT_modifier_add_normals(ModifierAddMenu, Menu):
         if ob_type == 'MESH':
             self.operator_modifier_add(layout, 'NORMAL_EDIT')
             self.operator_modifier_add(layout, 'WEIGHTED_NORMAL')
-        layout.template_modifier_asset_menu_items(catalog_path=self.bl_label)
-
-
-class OBJECT_MT_modifier_add_physics(ModifierAddMenu, Menu):
-    bl_label = "Physics"
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, context):
-        layout = self.layout
-        ob_type = context.object.type
-        if ob_type == 'MESH':
-            self.operator_modifier_add(layout, 'CLOTH')
-            self.operator_modifier_add(layout, 'COLLISION')
-            self.operator_modifier_add(layout, 'DYNAMIC_PAINT')
-            self.operator_modifier_add(layout, 'EXPLODE')
-            self.operator_modifier_add(layout, 'FLUID')
-            self.operator_modifier_add(layout, 'OCEAN')
-            self.operator_modifier_add(layout, 'PARTICLE_INSTANCE')
-            self.operator_modifier_add(layout, 'PARTICLE_SYSTEM')
-        if ob_type in {'MESH', 'CURVE', 'FONT', 'SURFACE', 'LATTICE'}:
-            self.operator_modifier_add(layout, 'SOFT_BODY')
         layout.template_modifier_asset_menu_items(catalog_path=self.bl_label)
 
 
@@ -280,9 +241,7 @@ classes = (
     OBJECT_MT_modifier_add,
     OBJECT_MT_modifier_add_edit,
     OBJECT_MT_modifier_add_generate,
-    OBJECT_MT_modifier_add_deform,
     OBJECT_MT_modifier_add_normals,
-    OBJECT_MT_modifier_add_physics,
     OBJECT_MT_modifier_add_color,
     AddModifierMenu,
 )

@@ -1286,6 +1286,9 @@ bool BKE_object_supports_modifiers(const Object *ob)
 bool BKE_object_support_modifier_type_check(const Object *ob, int modifier_type)
 {
   const ModifierTypeInfo *mti = BKE_modifier_get_info(ModifierType(modifier_type));
+  if (!mti) {
+    return false;
+  }
 
   /* Surface and lattice objects don't output geometry sets. */
   if (mti->modify_geometry_set != nullptr && ELEM(ob->type, OB_SURF, OB_LATTICE)) {

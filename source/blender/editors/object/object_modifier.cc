@@ -123,6 +123,10 @@ ModifierData *modifier_add(
 {
   ModifierData *new_md = nullptr;
   const ModifierTypeInfo *mti = BKE_modifier_get_info(ModifierType(type));
+  if (!mti) {
+    BKE_report(reports, RPT_WARNING, "This modifier is not available in this build");
+    return nullptr;
+  }
 
   /* Check compatibility of modifier [#25291, #50373]. */
   if (!BKE_object_support_modifier_type_check(ob, type)) {
@@ -1013,7 +1017,7 @@ static const EnumPropertyItem *modifier_add_itemf(bContext *C,
     if (md_item->identifier[0]) {
       const ModifierTypeInfo *mti = BKE_modifier_get_info(ModifierType(md_item->value));
 
-      if (mti->flags & eModifierTypeFlag_NoUserAdd) {
+      if (!mti || (mti->flags & eModifierTypeFlag_NoUserAdd)) {
         continue;
       }
 
