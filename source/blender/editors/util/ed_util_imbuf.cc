@@ -274,86 +274,6 @@ static void image_sample_apply(bContext *C, wmOperator *op, const wmEvent *event
   ED_area_tag_redraw(CTX_wm_area(C));
 }
 
-static void sequencer_sample_apply(bContext *C, wmOperator *op, const wmEvent *event)
-{
-  Scene *scene = CTX_data_sequencer_scene(C);
-  ARegion *region = CTX_wm_region(C);
-  ImBuf *ibuf = ed::vse::sequencer_ibuf_get(C, scene->r.cfra, nullptr);
-  ImageSampleInfo *info = static_cast<ImageSampleInfo *>(op->customdata);
-  float fx, fy;
-
-  if (ibuf == nullptr) {
-    info->draw = false;
-    return;
-  }
-
-  ui::view2d_region_to_view(&region->v2d, event->mval[0], event->mval[1], &fx, &fy);
-
-  fx /= scene->r.xasp / scene->r.yasp;
-
-  fx += float(scene->r.xsch) / 2.0f;
-  fy += float(scene->r.ysch) / 2.0f;
-  fx *= float(ibuf->x) / float(scene->r.xsch);
-  fy *= float(ibuf->y) / float(scene->r.ysch);
-
-  if (fx >= 0.0f && fy >= 0.0f && fx < ibuf->x && fy < ibuf->y) {
-    const float *fp;
-    const uchar *cp;
-    int x = int(fx), y = int(fy);
-
-    info->x = x;
-    info->y = y;
-    info->draw = true;
-    info->channels = ibuf->channels;
-
-    info->colp = nullptr;
-    info->colfp = nullptr;
-
-    if (ibuf->byte_data()) {
-      cp = ibuf->byte_data() + 4 * (y * ibuf->x + x);
-
-      info->col[0] = cp[0];
-      info->col[1] = cp[1];
-      info->col[2] = cp[2];
-      info->col[3] = cp[3];
-      info->colp = info->col;
-
-      info->colf[0] = float(cp[0]) / 255.0f;
-      info->colf[1] = float(cp[1]) / 255.0f;
-      info->colf[2] = float(cp[2]) / 255.0f;
-      info->colf[3] = float(cp[3]) / 255.0f;
-      info->colfp = info->colf;
-
-      copy_v4_v4(info->linearcol, info->colf);
-      IMB_colormanagement_colorspace_to_scene_linear_v4(
-          info->linearcol, false, ibuf->byte_buffer.colorspace);
-
-      info->color_manage = true;
-    }
-    if (ibuf->float_data()) {
-      fp = (ibuf->float_data() + (ibuf->channels) * (y * ibuf->x + x));
-
-      info->colf[0] = fp[0];
-      info->colf[1] = fp[1];
-      info->colf[2] = fp[2];
-      info->colf[3] = fp[3];
-      info->colfp = info->colf;
-
-      copy_v4_v4(info->linearcol, info->colf);
-      IMB_colormanagement_colorspace_to_scene_linear_v4(
-          info->linearcol, true, ibuf->float_buffer.colorspace);
-
-      info->color_manage = true;
-    }
-  }
-  else {
-    info->draw = false;
-  }
-
-  IMB_freeImBuf(ibuf);
-  ED_area_tag_redraw(CTX_wm_area(C));
-}
-
 static void ed_imbuf_sample_apply(bContext *C, wmOperator *op, const wmEvent *event)
 {
   ScrArea *area = CTX_wm_area(C);
@@ -361,15 +281,8 @@ static void ed_imbuf_sample_apply(bContext *C, wmOperator *op, const wmEvent *ev
     return;
   }
 
-  switch (area->spacetype) {
-    case SPACE_IMAGE: {
-      image_sample_apply(C, op, event);
-      break;
-    }
-    case SPACE_SEQ: {
-      sequencer_sample_apply(C, op, event);
-      break;
-    }
+  if (area->spacetype == SPACE_IMAGE) {
+    image_sample_apply(C, op, event);
   }
 }
 

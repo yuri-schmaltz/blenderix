@@ -46,7 +46,6 @@
 
 #include "interface_intern.hh"
 
-#include "ED_clip.hh"
 #include "ED_image.hh"
 #include "ED_node.hh"
 #include "ED_screen.hh"
@@ -202,12 +201,6 @@ bool eyedropper_color_sample_fl(bContext *C,
         SpaceNode *snode = area->spacedata.first_as<SpaceNode>();
         Main *bmain = CTX_data_main(C);
         if (ED_space_node_color_sample(bmain, snode, region, mval, r_col)) {
-          return true;
-        }
-      }
-      else if (area->spacetype == SPACE_CLIP) {
-        SpaceClip *sc = area->spacedata.first_as<SpaceClip>();
-        if (ED_space_clip_color_sample(sc, region, mval, r_col)) {
           return true;
         }
       }

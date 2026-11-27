@@ -21,28 +21,17 @@
 #include "BLI_math_matrix_c.hh"
 #include "BLI_math_vector_c.hh"
 
-#include "BKE_action.hh"
-#include "BKE_anim_data.hh"
 #include "BKE_constraint.h"
 #include "BKE_context.hh"
 #include "BKE_global.hh"
 #include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_modifier.hh"
-#include "BKE_nla.hh"
 #include "BKE_object_types.hh"
 #include "BKE_scene.hh"
 
-#include "ED_particle.hh"
 #include "ED_screen.hh"
 #include "ED_screen_types.hh"
-
-#include "ANIM_keyframing.hh"
-#include "ANIM_nla.hh"
-
-#include "SEQ_retiming.hh"
-
-#include "UI_view2d.hh"
 
 #include "WM_types.hh"
 
@@ -713,25 +702,12 @@ static int countAndCleanTransDataContainer(TransInfo *t)
 
 static void init_proportional_edit(TransInfo *t)
 {
-  /* NOTE: Proportional editing is not usable in pose mode yet #32444. */
-  /* NOTE: This `ELEM` uses more than 16 elements and so has been split. */
-  if (!(ELEM(t->data_type,
-             &TransConvertType_Action,
-             &TransConvertType_Curve,
-             &curves::TransConvertType_Curves,
-             &TransConvertType_Graph,
-             &greasepencil::TransConvertType_GreasePencil,
-             &TransConvertType_Lattice,
-             &TransConvertType_Mask,
-             &TransConvertType_MBall,
-             &TransConvertType_Mesh,
-             &TransConvertType_MeshEdge,
-             &TransConvertType_MeshSkin,
-             &TransConvertType_MeshUV,
-             &TransConvertType_MeshVertCData,
-             &TransConvertType_Node,
-             &TransConvertType_Object,
-             &pointcloud::TransConvertType_PointCloud)))
+  if (!ELEM(t->data_type,
+            &TransConvertType_Mesh,
+            &TransConvertType_MeshEdge,
+            &TransConvertType_MeshSkin,
+            &TransConvertType_MeshVertCData,
+            &TransConvertType_Object))
   {
     /* Disable proportional editing. */
     t->options |= CTX_NO_PET;
@@ -747,49 +723,13 @@ static void init_proportional_edit(TransInfo *t)
       sort_trans_data_selected_first(t);
     }
 
-    if (ELEM(t->data_type, &TransConvertType_Action, &TransConvertType_Graph)) {
-      /* Distance has already been set. */
-    }
-    else if (ELEM(t->data_type,
-                  &TransConvertType_Mesh,
-                  &TransConvertType_MeshSkin,
-                  &TransConvertType_MeshVertCData))
+    if (ELEM(t->data_type,
+             &TransConvertType_Mesh,
+             &TransConvertType_MeshSkin,
+             &TransConvertType_MeshVertCData))
     {
       if (t->flag & T_PROP_CONNECTED) {
         /* Already calculated by #transform_convert_mesh_connectivity_distance. */
-      }
-      else {
-        set_prop_dist(t, false);
-      }
-    }
-    else if (t->data_type == &TransConvertType_MeshUV && t->flag & T_PROP_CONNECTED) {
-      /* Already calculated by #uv_set_connectivity_distance. */
-    }
-    else if (t->data_type == &TransConvertType_Curve) {
-      BLI_assert(ELEM(t->obedit_type, OB_CURVES_LEGACY, OB_SURF));
-      if (t->flag & T_PROP_CONNECTED) {
-        /* Already calculated by #calc_distanceCurveVerts. */
-      }
-      else {
-        set_prop_dist(t, false);
-      }
-    }
-    else if (ELEM(t->data_type,
-                  &curves::TransConvertType_Curves,
-                  &greasepencil::TransConvertType_GreasePencil))
-    {
-      BLI_assert(t->obedit_type == OB_CURVES || t->obedit_type == OB_GREASE_PENCIL);
-      if (t->flag & T_PROP_CONNECTED) {
-        /* Already calculated by #curve_connected_point_distances /
-         * #cyclic_curve_connected_point_distances. */
-      }
-      else {
-        set_prop_dist(t, false);
-      }
-    }
-    else if (t->data_type == &TransConvertType_Mask) {
-      if (t->flag & T_PROP_CONNECTED) {
-        /* Already calculated by #calc_distanceCurveVerts in #createTransMaskingData. */
       }
       else {
         set_prop_dist(t, false);
@@ -801,29 +741,15 @@ static void init_proportional_edit(TransInfo *t)
 
     sort_trans_data_dist(t);
   }
-  else if (ELEM(t->obedit_type, OB_CURVES_LEGACY)) {
-    /* Needed because bezier handles can be partially selected
-     * and are still added into transform data. */
-    sort_trans_data_selected_first(t);
-  }
 }
 
 /* For multi object editing. */
 static void init_TransDataContainers(TransInfo *t, Object *obact, Span<Object *> objects)
 {
   if (!ELEM(t->data_type,
-            &TransConvertType_Pose,
-            &TransConvertType_EditArmature,
-            &TransConvertType_Curve,
-            &curves::TransConvertType_Curves,
-            &greasepencil::TransConvertType_GreasePencil,
-            &pointcloud::TransConvertType_PointCloud,
-            &TransConvertType_Lattice,
-            &TransConvertType_MBall,
             &TransConvertType_Mesh,
             &TransConvertType_MeshEdge,
             &TransConvertType_MeshSkin,
-            &TransConvertType_MeshUV,
             &TransConvertType_MeshVertCData))
   {
     /* Does not support Multi object editing. */
@@ -831,12 +757,8 @@ static void init_TransDataContainers(TransInfo *t, Object *obact, Span<Object *>
   }
 
   const eObjectMode object_mode = obact ? obact->mode : OB_MODE_OBJECT;
-  const short object_type = obact ? obact->type : -1;
 
-  if ((object_mode & OB_MODE_EDIT) ||
-      (t->data_type == &greasepencil::TransConvertType_GreasePencil) ||
-      ((object_mode & OB_MODE_POSE) && (object_type == OB_ARMATURE)))
-  {
+  if (object_mode & OB_MODE_EDIT) {
     if (t->data_container) {
       MEM_delete(t->data_container);
     }
@@ -845,8 +767,7 @@ static void init_TransDataContainers(TransInfo *t, Object *obact, Span<Object *>
     if (objects.is_empty()) {
       ObjectsInModeParams params = {0};
       params.object_mode = object_mode;
-      /* Pose transform operates on `ob->pose` so don't skip duplicate object-data. */
-      params.no_dup_data = (object_mode & OB_MODE_POSE) == 0;
+      params.no_dup_data = true;
       local_objects = BKE_view_layer_array_from_objects_in_mode_params(
           *t->bmain,
           t->scene,
@@ -870,19 +791,11 @@ static void init_TransDataContainers(TransInfo *t, Object *obact, Span<Object *>
                                 0;
       }
 
-      if (object_mode & OB_MODE_EDIT || object_mode & OB_MODE_PAINT_GREASE_PENCIL) {
+      if (object_mode & OB_MODE_EDIT) {
         tc->obedit = objects[i];
-        /* Check needed for UVs. */
         if ((t->flag & T_2D_EDIT) == 0) {
           tc->use_local_mat = true;
         }
-      }
-      else if (object_mode & OB_MODE_POSE) {
-        tc->poseobj = objects[i];
-        tc->use_local_mat = true;
-      }
-      else if (t->data_type == &greasepencil::TransConvertType_GreasePencil) {
-        tc->use_local_mat = true;
       }
 
       if (tc->use_local_mat) {
@@ -900,28 +813,14 @@ static void init_TransDataContainers(TransInfo *t, Object *obact, Span<Object *>
   }
 }
 
-static TransConvertTypeInfo *convert_type_get(const TransInfo *t, Object **r_obj_armature)
+static TransConvertTypeInfo *convert_type_get(const TransInfo *t)
 {
-  ViewLayer *view_layer = t->view_layer;
-  BKE_view_layer_synced_ensure(*t->bmain, t->scene, t->view_layer);
-  Object *ob = BKE_view_layer_active_object_get(view_layer);
-
   /* If tests must match recalc_data for correct updates. */
   if (t->options & CTX_CURSOR) {
-    if (t->spacetype == SPACE_IMAGE) {
-      return &TransConvertType_CursorImage;
+    if (t->spacetype == SPACE_VIEW3D) {
+      return &TransConvertType_Cursor3D;
     }
-
-    if (t->spacetype == SPACE_SEQ) {
-      return &TransConvertType_CursorSequencer;
-    }
-
-    return &TransConvertType_Cursor3D;
-  }
-  if (!(t->options & CTX_PAINT_CURVE) && (t->spacetype == SPACE_VIEW3D) && ob &&
-      (ob->mode == OB_MODE_SCULPT) && ob->runtime->sculpt_session)
-  {
-    return &TransConvertType_Sculpt;
+    return nullptr;
   }
   if (t->options & CTX_TEXTURE_SPACE) {
     return &TransConvertType_ObjectTexSpace;
@@ -929,57 +828,7 @@ static TransConvertTypeInfo *convert_type_get(const TransInfo *t, Object **r_obj
   if (t->options & CTX_EDGE_DATA) {
     return &TransConvertType_MeshEdge;
   }
-  if (t->options & CTX_GPENCIL_STROKES) {
-    if (t->obedit_type == OB_GREASE_PENCIL) {
-      return &greasepencil::TransConvertType_GreasePencil;
-    }
-    return nullptr;
-  }
-  if (t->spacetype == SPACE_IMAGE) {
-    if (t->options & CTX_MASK) {
-      return &TransConvertType_Mask;
-    }
-    if (t->options & CTX_PAINT_CURVE) {
-      if (!ELEM(t->mode, TFM_SHEAR, TFM_SHRINKFATTEN)) {
-        return &TransConvertType_PaintCurve;
-      }
-    }
-    else if (t->obedit_type == OB_MESH) {
-      return &TransConvertType_MeshUV;
-    }
-    return nullptr;
-  }
-  if (t->spacetype == SPACE_ACTION) {
-    return &TransConvertType_Action;
-  }
-  if (t->spacetype == SPACE_NLA) {
-    return &TransConvertType_NLA;
-  }
-  if (t->spacetype == SPACE_SEQ) {
-    if (t->options & CTX_SEQUENCER_IMAGE) {
-      return &TransConvertType_SequencerImage;
-    }
-    if (seq::retiming_keys_are_selected(t->scene)) {
-      return &TransConvertType_SequencerRetiming;
-    }
-    return &TransConvertType_Sequencer;
-  }
-  if (t->spacetype == SPACE_GRAPH) {
-    return &TransConvertType_Graph;
-  }
-  if (t->spacetype == SPACE_NODE) {
-    return &TransConvertType_Node;
-  }
-  if (t->spacetype == SPACE_CLIP) {
-    if (t->options & CTX_MOVIECLIP) {
-      if (t->region && (t->region->regiontype == RGN_TYPE_PREVIEW)) {
-        return &TransConvertType_TrackingCurves;
-      }
-      return &TransConvertType_Tracking;
-    }
-    if (t->options & CTX_MASK) {
-      return &TransConvertType_Mask;
-    }
+  if (t->spacetype != SPACE_VIEW3D) {
     return nullptr;
   }
   if (t->obedit_type != -1) {
@@ -992,50 +841,12 @@ static TransConvertTypeInfo *convert_type_get(const TransInfo *t, Object **r_obj
       }
       return &TransConvertType_Mesh;
     }
-    if (ELEM(t->obedit_type, OB_CURVES_LEGACY, OB_SURF)) {
-      return &TransConvertType_Curve;
-    }
-    if (t->obedit_type == OB_LATTICE) {
-      return &TransConvertType_Lattice;
-    }
-    if (t->obedit_type == OB_MBALL) {
-      return &TransConvertType_MBall;
-    }
-    if (t->obedit_type == OB_ARMATURE) {
-      return &TransConvertType_EditArmature;
-    }
-    if (t->obedit_type == OB_CURVES) {
-      return &curves::TransConvertType_Curves;
-    }
-    if (t->obedit_type == OB_POINTCLOUD) {
-      return &pointcloud::TransConvertType_PointCloud;
-    }
     return nullptr;
   }
-  if (ob && (ob->mode & OB_MODE_POSE)) {
-    return &TransConvertType_Pose;
-  }
-  if (ob && (ob->mode & OB_MODE_ALL_WEIGHT_PAINT) && !(t->options & CTX_PAINT_CURVE)) {
-    Object *ob_armature = transform_object_deform_pose_armature_get(t, ob);
-    if (ob_armature) {
-      *r_obj_armature = ob_armature;
-      return &TransConvertType_Pose;
-    }
-    return nullptr;
-  }
-  if (ob && ((ob->mode & OB_MODE_ALL_PAINT_MESH) || (ob->mode & OB_MODE_SCULPT_CURVES))) {
-    if ((t->options & CTX_PAINT_CURVE) && !ELEM(t->mode, TFM_SHEAR, TFM_SHRINKFATTEN)) {
-      return &TransConvertType_PaintCurve;
-    }
-    return nullptr;
-  }
-  if (ob && ELEM(ob->mode,
-                 OB_MODE_VERTEX_GREASE_PENCIL,
-                 OB_MODE_SCULPT_GREASE_PENCIL,
-                 OB_MODE_WEIGHT_GREASE_PENCIL))
-  {
-    /* Draw and Edit mode handle transformations via #TransConverType_GreasePencil, avoid
-     * transformations otherwise. */
+  ViewLayer *view_layer = t->view_layer;
+  BKE_view_layer_synced_ensure(*t->bmain, t->scene, t->view_layer);
+  Object *ob = BKE_view_layer_active_object_get(view_layer);
+  if (ob && ob->mode != OB_MODE_OBJECT) {
     return nullptr;
   }
   return &TransConvertType_Object;
@@ -1045,10 +856,8 @@ void create_trans_data(bContext *C, TransInfo *t)
 {
   t->data_len_all = -1;
 
-  Object *ob_armature = nullptr;
-  t->data_type = convert_type_get(t, &ob_armature);
+  t->data_type = convert_type_get(t);
   if (t->data_type == nullptr) {
-    printf("edit type not implemented!\n");
     BLI_assert(t->data_len_all == -1);
     t->data_len_all = 0;
     return;
@@ -1056,20 +865,9 @@ void create_trans_data(bContext *C, TransInfo *t)
 
   t->flag |= eTFlag(t->data_type->flags);
 
-  if (ob_armature) {
-    init_TransDataContainers(t, ob_armature, {ob_armature});
-  }
-  else {
-    BKE_view_layer_synced_ensure(*t->bmain, t->scene, t->view_layer);
-    Object *ob = BKE_view_layer_active_object_get(t->view_layer);
-    /* Grease Pencil Draw mode only supports editing the active object. */
-    if (ob && (ob->mode & OB_MODE_PAINT_GREASE_PENCIL)) {
-      init_TransDataContainers(t, ob, {ob});
-    }
-    else {
-      init_TransDataContainers(t, ob, {});
-    }
-  }
+  BKE_view_layer_synced_ensure(*t->bmain, t->scene, t->view_layer);
+  Object *ob = BKE_view_layer_active_object_get(t->view_layer);
+  init_TransDataContainers(t, ob, {});
 
   if (t->data_type == &TransConvertType_Object) {
     t->options |= CTX_OBJECT;
@@ -1100,19 +898,6 @@ void create_trans_data(bContext *C, TransInfo *t)
     }
   }
   else {
-    if (t->data_type == &TransConvertType_Pose) {
-      t->options |= CTX_POSE_BONE;
-    }
-    else if (t->data_type == &TransConvertType_Sequencer) {
-      /* Sequencer has no use for floating point transform. */
-      t->num.flag |= NUM_NO_FRACTION;
-    }
-    else if (t->data_type == &TransConvertType_SequencerImage) {
-      t->obedit_type = -1;
-    }
-    else if (t->data_type == &TransConvertType_NLA) {
-      t->obedit_type = -1;
-    }
     t->data_type->create_trans_data(C, t);
   }
 
@@ -1205,107 +990,6 @@ void transform_convert_clip_mirror_modifier_apply(TransDataContainer *tc)
         }
       }
     }
-  }
-}
-
-void animrecord_check_state(TransInfo *t, ID *id)
-{
-  Scene *scene = t->scene;
-  wmTimer *animtimer = t->animtimer;
-  ScreenAnimData *sad = static_cast<ScreenAnimData *>((animtimer) ? animtimer->customdata :
-                                                                    nullptr);
-
-  /* Sanity checks. */
-  if (ELEM(nullptr, scene, id, sad)) {
-    return;
-  }
-
-  /* Check if we need a new strip if:
-   * - If `animtimer` is running.
-   * - We're not only keying for available channels.
-   * - The option to add new actions for each round is not enabled.
-   */
-  if (animrig::is_keying_flag(scene, AUTOKEY_FLAG_INSERTAVAILABLE) == 0 &&
-      (scene->toolsettings->keying_flag & AUTOKEY_FLAG_LAYERED_RECORD))
-  {
-    /* If playback has just looped around,
-     * we need to add a new NLA track+strip to allow a clean pass to occur. */
-    if ((sad) && (sad->flag & ANIMPLAY_FLAG_JUMPED)) {
-      AnimData *adt = BKE_animdata_from_id(id);
-      const bool is_first = (adt) && (adt->nla_tracks.first_ == nullptr);
-
-      /* Perform push-down manually with some differences
-       * NOTE: #BKE_nla_action_pushdown() sync warning. */
-      if ((adt->action) && !(adt->flag & ADT_NLA_EDIT_ON)) {
-        /* Only push down if action is more than 1-2 frames long. */
-        const float2 frame_range = adt->action->wrap().get_frame_range_of_keys(true);
-        if (frame_range[1] > frame_range[0] + 2.0f) {
-          /* TODO: call #BKE_nla_action_pushdown() instead? */
-
-          /* Add a new NLA strip to the track, which references the active action + slot. */
-          NlaStrip *strip = BKE_nlastack_add_strip({*id, *adt}, ID_IS_OVERRIDE_LIBRARY(id));
-          BLI_assert(strip);
-          animrig::nla::assign_action_slot_handle(*strip, adt->slot_handle, *id);
-
-          /* Clear reference to action now that we've pushed it onto the stack. */
-          const bool unassign_ok = animrig::unassign_action(*id);
-          BLI_assert_msg(
-              unassign_ok,
-              "Expecting un-assigning an action to always work when pushing down an NLA strip");
-          UNUSED_VARS_NDEBUG(unassign_ok);
-
-          /* Adjust blending + extend so that they will behave correctly. */
-          strip->extendmode = NLASTRIP_EXTEND_NOTHING;
-          strip->flag &= ~(NLASTRIP_FLAG_AUTO_BLENDS | NLASTRIP_FLAG_SELECT |
-                           NLASTRIP_FLAG_ACTIVE);
-
-          /* Copy current "action blending" settings from adt to the strip,
-           * as it was keyframed with these settings, so omitting them will
-           * change the effect, see: #54766. */
-          if (is_first == false) {
-            strip->blendmode = adt->act_blendmode;
-            strip->influence = adt->act_influence;
-
-            if (adt->act_influence < 1.0f) {
-              /* Enable "user-controlled" influence (which will insert a default keyframe)
-               * so that the influence doesn't get lost on the new update.
-               *
-               * NOTE: An alternative way would have been to instead hack the influence
-               * to not get always get reset to full strength if NLASTRIP_FLAG_USR_INFLUENCE
-               * is disabled but auto-blending isn't being used. However, that approach
-               * is a bit hacky/hard to discover, and may cause backwards compatibility issues,
-               * so it's better to just do it this way. */
-              strip->flag |= NLASTRIP_FLAG_USR_INFLUENCE;
-              BKE_nlastrip_validate_fcurves(strip);
-            }
-          }
-
-          /* Also, adjust the AnimData's action extend mode to be on
-           * 'nothing' so that previous result still play. */
-          adt->act_extendmode = NLASTRIP_EXTEND_NOTHING;
-        }
-      }
-    }
-  }
-}
-
-void transform_convert_flush_handle2D(TransData *td, TransData2D *td2d, const float y_fac)
-{
-  float delta_x = td->loc[0] - td->iloc[0];
-  float delta_y = (td->loc[1] - td->iloc[1]) * y_fac;
-
-  /* If the handles are to be moved too
-   * (as side-effect of keyframes moving, to keep the general effect)
-   * offset them by the same amount so that the general angles are maintained
-   * (i.e. won't change while handles are free-to-roam and keyframes are snap-locked).
-   */
-  if ((td->flag & TD_MOVEHANDLE1) && td2d->h1) {
-    td2d->h1[0] = td2d->ih1[0] + delta_x;
-    td2d->h1[1] = td2d->ih1[1] + delta_y;
-  }
-  if ((td->flag & TD_MOVEHANDLE2) && td2d->h2) {
-    td2d->h2[0] = td2d->ih2[0] + delta_x;
-    td2d->h2[1] = td2d->ih2[1] + delta_y;
   }
 }
 

@@ -15,7 +15,6 @@ _modules = [
     "properties_data_mesh",
     "properties_data_modifier",
     "properties_object",
-    "properties_physics_geometry_nodes",
     "properties_scene",
     "properties_collection",
     "generic_ui_list",

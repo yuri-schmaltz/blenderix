@@ -76,7 +76,6 @@
 #include "ED_scene.hh"
 #include "ED_screen.hh"
 #include "ED_screen_types.hh"
-#include "ED_sequencer.hh"
 #include "ED_space_graph.hh"
 #include "ED_undo.hh"
 #include "ED_view3d.hh"
@@ -3901,7 +3900,7 @@ static wmOperatorStatus frame_offset_exec(bContext *C, wmOperator *op)
 
   ED_areas_do_frame_follow(C, false);
 
-  ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
+
 
   DEG_id_tag_update(&scene->id, ID_RECALC_FRAME_CHANGE);
 
@@ -3969,7 +3968,7 @@ static wmOperatorStatus frame_jump_exec(bContext *C, wmOperator *op)
 
     ED_areas_do_frame_follow(C, true);
 
-    ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
+  
 
     DEG_id_tag_update(&scene->id, ID_RECALC_FRAME_CHANGE);
 
@@ -4052,7 +4051,7 @@ static wmOperatorStatus frame_jump_delta_exec(bContext *C, wmOperator *op)
   }
 
   ED_areas_do_frame_follow(C, true);
-  ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
+
 
   DEG_id_tag_update(&scene->id, ID_RECALC_FRAME_CHANGE);
 
@@ -4285,7 +4284,7 @@ static wmOperatorStatus keyframe_jump_exec(bContext *C, wmOperator *op)
   }
 
   ED_areas_do_frame_follow(C, true);
-  ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
+
 
   DEG_id_tag_update(&scene->id, ID_RECALC_FRAME_CHANGE);
 
@@ -4408,7 +4407,7 @@ static wmOperatorStatus marker_jump_exec(bContext *C, wmOperator *op)
 
   ED_areas_do_frame_follow(C, true);
 
-  ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
+
 
   DEG_id_tag_update(&scene->id, ID_RECALC_FRAME_CHANGE);
 
@@ -6523,9 +6522,7 @@ static void screen_animation_region_tag_redraw(
     }
 
     if (area->spacetype == SPACE_SEQ) {
-      if (!ed::vse::has_playback_animation(scene)) {
-        return;
-      }
+      return;
     }
   }
   ED_region_tag_redraw(region);
@@ -6688,17 +6685,6 @@ static wmOperatorStatus screen_animation_step_invoke(bContext *C,
   float start_frame = scene->playback_start();
   float end_frame = scene->playback_end();
 
-  /* The preview range takes precedence over the scene strip range. */
-  if (sad->use_seq_scenestrip_range && (scene->r.flag & SCER_PRV_RANGE) == 0) {
-    /* Note: We cannot use #ED_scene_get_effective_playback_range here as it checks whether strip
-     * range playback applies in the current context, which in turn may change during playback,
-     * e.g. mouse hovers over a different editor).  */
-    if (const std::optional<ScenePlaybackRange> range = ed::vse::get_scene_strip_frame_range(*C)) {
-      start_frame = range->start_frame;
-      end_frame = range->end_frame;
-    }
-  }
-
   /* Handle reaching the extreme frames. */
   const bool is_playing_forward = (sad->flag & ANIMPLAY_FLAG_REVERSE) == 0;
   const bool is_extreme_frame = is_playing_forward ? scene->r.cfra > end_frame :
@@ -6766,7 +6752,7 @@ static wmOperatorStatus screen_animation_step_invoke(bContext *C,
 
   WM_event_add_notifier(C, NC_SCREEN | ND_ANIMATION_PLAYBACK, screen);
 
-  ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
+
 
   /* Since we follow draw-flags, we can't send notifier but tag regions ourselves. */
   if (depsgraph != nullptr) {
@@ -7235,7 +7221,7 @@ static wmOperatorStatus screen_animation_cancel_exec(bContext *C, wmOperator *op
     if (restore_start_frame) {
       /* reset current frame and just send a notifier to deal with the rest */
       scene->r.cfra = frame;
-      ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
+    
       WM_event_add_notifier(C, NC_SCENE | ND_FRAME, scene);
     }
   }

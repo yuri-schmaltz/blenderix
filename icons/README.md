@@ -3,6 +3,7 @@
 Assets gráficos do aplicativo (logo, ícones de sistema e variantes).
 
 ```
+icons/icon.png          # ícone PNG principal do app (512x512, embarcado e instalado)
 icons/options/          # 10 variantes do ícone do app (ver options/README.md)
 release/datafiles/icons_svg/blenderix.svg       # ícone SVG embarcado no app
 release/freedesktop/icons/                       # ícones Linux (scalable/symbolic)

@@ -268,17 +268,6 @@ static void apply_shear(TransInfo *t)
 
   apply_shear_value(t, value);
 
-  if (t->flag & T_CLIP_UV) {
-    if (clip_uv_transform_shear(t, t->values_final, t->values_inside_constraints)) {
-      apply_shear_value(t, t->values_final[0]);
-    }
-
-    /* Not ideal, see #clipUVData code-comment. */
-    if (t->flag & T_PROP_EDIT) {
-      clipUVData(t);
-    }
-  }
-
   recalc_data(t);
 
   char str[UI_MAX_DRAW_STR];

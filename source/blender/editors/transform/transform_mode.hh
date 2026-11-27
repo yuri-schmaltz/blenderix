@@ -129,25 +129,9 @@ TransDataContainer *transform_mode_container_first_ok(TransInfo *t);
 
 extern TransModeInfo TransMode_align;
 
-/* `transform_mode_bbone_resize.cc` */
-
-extern TransModeInfo TransMode_bboneresize;
-
 /* `transform_mode_bend.cc` */
 
 extern TransModeInfo TransMode_bend;
-
-/* `transform_mode_boneenvelope.cc` */
-
-extern TransModeInfo TransMode_boneenvelope;
-
-/* `transform_mode_boneroll.cc` */
-
-extern TransModeInfo TransMode_boneroll;
-
-/* `transform_mode_curveshrinkfatten.cc` */
-
-extern TransModeInfo TransMode_curveshrinkfatten;
 
 /* `transform_mode_customdata.cc` */
 
@@ -159,24 +143,10 @@ extern TransModeInfo TransMode_bevelweight;
 
 extern TransModeInfo TransMode_rotatenormal;
 
-/* `transform_mode_edge_seq_slide.cc` */
-
-extern TransModeInfo TransMode_seqslide;
-bool transform_mode_edge_seq_slide_use_restore_handle_selection(const TransInfo *t);
-wmOperator *transform_mode_edge_seq_slide_operator_get(const TransInfo *t);
-
 /* `transform_mode_edge_slide.cc` */
 
 extern TransModeInfo TransMode_edgeslide;
 void transform_mode_edge_slide_reproject_input(TransInfo *t);
-
-/* `transform_mode_gpopacity.cc` */
-
-extern TransModeInfo TransMode_gpopacity;
-
-/* `transform_mode_maskshrinkfatten.cc` */
-
-extern TransModeInfo TransMode_maskshrinkfatten;
 
 /* `transform_mode_mirror.cc` */
 
@@ -210,22 +180,6 @@ extern TransModeInfo TransMode_skinresize;
 
 extern TransModeInfo TransMode_snapsource;
 void transform_mode_snap_source_init(TransInfo *t, wmOperator *op);
-
-/* `transform_mode_tilt.cc` */
-
-extern TransModeInfo TransMode_tilt;
-
-/* `transform_mode_timescale.cc` */
-
-extern TransModeInfo TransMode_timescale;
-
-/* `transform_mode_timeslide.cc` */
-
-extern TransModeInfo TransMode_timeslide;
-
-/* `transform_mode_timetranslate.cc` */
-
-extern TransModeInfo TransMode_timetranslate;
 
 /* `transform_mode_tosphere.cc` */
 

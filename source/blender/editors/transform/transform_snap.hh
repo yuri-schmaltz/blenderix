@@ -64,26 +64,5 @@ void removeSnapPoint(TransInfo *t);
 
 float transform_snap_distance_len_squared_fn(TransInfo *t, const float p1[3], const float p2[3]);
 
-/* `transform_snap_sequencer.cc` */
-
-TransSeqSnapData *snap_sequencer_data_build(const TransInfo *t);
-void snap_sequencer_data_free(TransSeqSnapData *data);
-bool snap_sequencer_calc(TransInfo *t);
-void snap_sequencer_apply_seqslide(TransInfo *t, float *vec);
-void snap_sequencer_image_apply_translate(TransInfo *t, float vec[2]);
-
-/* `transform_snap_animation.cc` */
-void snapFrameTransform(
-    TransInfo *t, eSnapMode snap_mode, float val_initial, float val_final, float *r_val_final);
-/**
- * This function is used by Animation Editor specific transform functions to do
- * the Snap Keyframe to Nearest Frame/Marker.
- */
-void transform_snap_anim_flush_data(TransInfo *t,
-                                    TransData *td,
-                                    eSnapMode snap_mode,
-                                    float *r_val_final);
-bool transform_snap_nla_calc(TransInfo *t, float *vec);
-
 }  // namespace ed::transform
 }  // namespace blender

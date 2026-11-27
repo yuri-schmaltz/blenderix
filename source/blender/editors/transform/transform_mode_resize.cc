@@ -237,11 +237,6 @@ static void applyResize(TransInfo *t)
       for (i = 0; i < tc->data_len; i++) {
         ElementResize(t, tc, i, mat);
       }
-
-      /* Not ideal, see #clipUVData code-comment. */
-      if (t->flag & T_PROP_EDIT) {
-        clipUVData(t);
-      }
     }
   }
 

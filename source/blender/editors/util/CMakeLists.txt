@@ -34,7 +34,6 @@ set(SRC
   ../include/ED_asset.hh
   ../include/ED_asset_menu_utils.hh
   ../include/ED_buttons.hh
-  ../include/ED_clip.hh
   ../include/ED_curve.hh
   ../include/ED_curves.hh
   ../include/ED_curves_sculpt.hh
@@ -74,7 +73,6 @@ set(SRC
   ../include/ED_screen_types.hh
   ../include/ED_sculpt.hh
   ../include/ED_select_utils.hh
-  ../include/ED_sequencer.hh
   ../include/ED_space_api.hh
   ../include/ED_time_scrub_ui.hh
   ../include/ED_transform.hh

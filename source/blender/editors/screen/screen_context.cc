@@ -40,7 +40,6 @@
 
 #include "ED_anim_api.hh"
 #include "ED_armature.hh"
-#include "ED_clip.hh"
 #include "ED_gpencil_legacy.hh"
 #include "ED_markers.hh"
 
@@ -750,28 +749,10 @@ static eContextResult screen_ctx_selected_nla_strips(const bContext *C, bContext
   }
   return CTX_RESULT_NO_DATA;
 }
-static eContextResult screen_ctx_selected_movieclip_tracks(const bContext *C,
-                                                           bContextDataResult *result)
+static eContextResult screen_ctx_selected_movieclip_tracks(const bContext * /*C*/,
+                                                           bContextDataResult * /*result*/)
 {
-  SpaceClip *space_clip = CTX_wm_space_clip(C);
-  if (space_clip == nullptr) {
-    return CTX_RESULT_NO_DATA;
-  }
-  MovieClip *clip = ED_space_clip_get_clip(space_clip);
-  if (clip == nullptr) {
-    return CTX_RESULT_NO_DATA;
-  }
-
-  const MovieTrackingObject *tracking_object = BKE_tracking_object_get_active(&clip->tracking);
-  for (MovieTrackingTrack &track : tracking_object->tracks) {
-    if (!TRACK_SELECTED(&track)) {
-      continue;
-    }
-    CTX_data_list_add(result, &clip->id, RNA_MovieTrackingTrack, &track);
-  }
-
-  CTX_data_type_set(result, ContextDataType::Collection);
-  return CTX_RESULT_OK;
+  return CTX_RESULT_NO_DATA;
 }
 
 static eContextResult screen_ctx_annotation_data(const bContext *C, bContextDataResult *result)

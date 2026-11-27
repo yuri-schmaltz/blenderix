@@ -545,10 +545,6 @@ set(GLSL_SRC
   shaders/gpu_shader_keyframe_shape.bsl.hh
   shaders/gpu_shader_text.bsl.hh
 
-  shaders/gpu_shader_sequencer_scope.bsl.hh
-  shaders/gpu_shader_sequencer_widget.bsl.hh
-  shaders/gpu_shader_sequencer_zebra.bsl.hh
-
   shaders/gpu_shader_codegen_lib.glsl
 
   shaders/python/gpu_shader_python_base.glsl

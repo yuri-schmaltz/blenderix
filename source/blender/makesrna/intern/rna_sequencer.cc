@@ -199,8 +199,6 @@ const EnumPropertyItem rna_enum_pitch_quality_items[] = {
 
 #  include "NOD_nodes_srna.hh"
 
-#  include "ED_sequencer.hh"
-
 #  include "SEQ_add.hh"
 #  include "SEQ_channels.hh"
 #  include "SEQ_edit.hh"
@@ -267,9 +265,8 @@ static void rna_Strip_invalidate_preprocessed_update(Main * /*bmain*/,
   }
 }
 
-static void rna_Strip_mute_update(bContext *C, PointerRNA *ptr)
+static void rna_Strip_mute_update(bContext * /*C*/, PointerRNA *ptr)
 {
-  ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
   rna_Strip_invalidate_raw_update(nullptr, nullptr, ptr);
 }
 
@@ -291,7 +288,6 @@ static void rna_Strip_scene_sync_update(bContext *C, PointerRNA *ptr)
 {
   Main *bmain = CTX_data_main(C);
   Scene *scene = CTX_data_sequencer_scene(C);
-  ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
   rna_Strip_invalidate_raw_update(bmain, scene, ptr);
   DEG_id_tag_update(&scene->id, ID_RECALC_AUDIO | ID_RECALC_SEQUENCER_STRIPS);
   DEG_relations_tag_update(bmain);
@@ -1952,7 +1948,6 @@ static void rna_SequenceTimelineChannel_mute_update(bContext *C, PointerRNA *ptr
     seqbase = &channel_owner->seqbase;
   }
 
-  ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
   for (Strip &strip : *seqbase) {
     seq::relations_invalidate_cache(scene, &strip);
   }

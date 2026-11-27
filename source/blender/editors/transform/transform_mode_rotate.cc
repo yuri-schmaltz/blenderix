@@ -357,17 +357,6 @@ static void applyRotation(TransInfo *t)
   const bool is_large_rotation = hasNumInput(&t->num);
   applyRotationValue(t, final, axis_final, is_large_rotation, quadrant);
 
-  if (t->flag & T_CLIP_UV) {
-    if (clip_uv_transform_rotate(t, t->values_final, t->values_inside_constraints)) {
-      applyRotationValue(t, t->values_final[0], axis_final, is_large_rotation, quadrant);
-    }
-
-    /* Not ideal, see #clipUVData code-comment. */
-    if (t->flag & T_PROP_EDIT) {
-      clipUVData(t);
-    }
-  }
-
   recalc_data(t);
 
   char str[UI_MAX_DRAW_STR];

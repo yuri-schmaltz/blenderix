@@ -989,10 +989,8 @@ void ElementResize(const TransInfo *t,
       float fscale[3];
 
       if (ELEM(t->data_type,
-               &TransConvertType_Sculpt,
                &TransConvertType_Object,
-               &TransConvertType_ObjectTexSpace,
-               &TransConvertType_Pose))
+               &TransConvertType_ObjectTexSpace))
       {
         float ob_scale_mat[3][3];
         /* Reorient the size mat to fit the oriented object. */
@@ -1107,7 +1105,7 @@ void ElementResize(const TransInfo *t,
 /** \name Transform Mode Initialization
  * \{ */
 
-static TransModeInfo *mode_info_get(TransInfo *t, const int mode)
+static TransModeInfo *mode_info_get(TransInfo * /*t*/, const int mode)
 {
   switch (mode) {
     case TFM_TRANSLATION:
@@ -1126,12 +1124,6 @@ static TransModeInfo *mode_info_get(TransInfo *t, const int mode)
       return &TransMode_bend;
     case TFM_SHRINKFATTEN:
       return &TransMode_shrinkfatten;
-    case TFM_TILT:
-      return &TransMode_tilt;
-    case TFM_CURVE_SHRINKFATTEN:
-      return &TransMode_curveshrinkfatten;
-    case TFM_MASK_SHRINKFATTEN:
-      return &TransMode_maskshrinkfatten;
     case TFM_TRACKBALL:
       return &TransMode_trackball;
     case TFM_PUSHPULL:
@@ -1140,43 +1132,18 @@ static TransModeInfo *mode_info_get(TransInfo *t, const int mode)
       return &TransMode_edgecrease;
     case TFM_VERT_CREASE:
       return &TransMode_vertcrease;
-    case TFM_BONESIZE:
-      return &TransMode_bboneresize;
-    case TFM_BONE_ENVELOPE:
-    case TFM_BONE_ENVELOPE_DIST:
-      return &TransMode_boneenvelope;
     case TFM_EDGE_SLIDE:
       return &TransMode_edgeslide;
     case TFM_VERT_SLIDE:
       return &TransMode_vertslide;
-    case TFM_BONE_ROLL:
-      return &TransMode_boneroll;
-    case TFM_TIME_TRANSLATE:
-      return &TransMode_timetranslate;
-    case TFM_TIME_SLIDE:
-      return &TransMode_timeslide;
-    case TFM_TIME_SCALE:
-      return &TransMode_timescale;
-    case TFM_TIME_EXTEND:
-      /* Do TFM_TIME_TRANSLATE (for most Animation Editors because they have only 1D transforms for
-       * time values) or TFM_TRANSLATION (for Graph/NLA Editors only since they uses 'standard'
-       * transforms to get 2D movement) depending on which editor this was called from. */
-      if (ELEM(t->spacetype, SPACE_GRAPH, SPACE_NLA)) {
-        return &TransMode_translate;
-      }
-      return &TransMode_timetranslate;
     case TFM_MIRROR:
       return &TransMode_mirror;
     case TFM_BWEIGHT:
       return &TransMode_bevelweight;
     case TFM_ALIGN:
       return &TransMode_align;
-    case TFM_SEQ_SLIDE:
-      return &TransMode_seqslide;
     case TFM_NORMAL_ROTATION:
       return &TransMode_rotatenormal;
-    case TFM_GPENCIL_OPACITY:
-      return &TransMode_gpopacity;
   }
   return nullptr;
 }

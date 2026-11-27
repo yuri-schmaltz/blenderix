@@ -19,7 +19,6 @@
 #include "ED_render.hh"
 #include "ED_scene.hh"
 #include "ED_screen.hh"
-#include "ED_sequencer.hh"
 #include "ED_util.hh"
 
 #include "WM_api.hh"
@@ -133,17 +132,12 @@ void ED_scene_change_update(Main *bmain, Scene *scene, ViewLayer *layer)
 /** \name Effective Playback Range
  * \{ */
 
-ScenePlaybackRange ED_scene_get_effective_playback_range(const bContext &C, const Scene *scene)
+ScenePlaybackRange ED_scene_get_effective_playback_range(const bContext & /*C*/, const Scene *scene)
 {
   if (scene->r.flag & SCER_PRV_RANGE) {
     return {scene->r.psfra, scene->r.pefra};
   }
 
-  if (ed::vse::is_scene_frame_range_from_strip_needed(C)) {
-    if (const std::optional<ScenePlaybackRange> range = ed::vse::get_scene_strip_frame_range(C)) {
-      return *range;
-    }
-  }
   return BKE_scene_get_playback_range(scene);
 }
 

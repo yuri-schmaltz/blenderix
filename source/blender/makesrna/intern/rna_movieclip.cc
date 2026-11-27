@@ -26,8 +26,6 @@
 
 #  include "DEG_depsgraph.hh"
 
-#  include "ED_clip.hh"
-
 #  include "DNA_screen_types.h"
 #  include "DNA_space_types.h"
 
@@ -65,41 +63,10 @@ static void rna_MovieClip_use_proxy_update(Main *bmain, Scene * /*scene*/, Point
   seq::relations_invalidate_movieclip_strips(bmain, clip);
 }
 
-static void rna_MovieClipUser_proxy_render_settings_update(Main *bmain,
+static void rna_MovieClipUser_proxy_render_settings_update(Main * /*bmain*/,
                                                            Scene * /*scene*/,
-                                                           PointerRNA *ptr)
+                                                           PointerRNA * /*ptr*/)
 {
-  ID *id = ptr->owner_id;
-  MovieClipUser *user = static_cast<MovieClipUser *>(ptr->data);
-
-  /* when changing render settings of space clip user
-   * clear cache for clip, so all the memory is available
-   * for new render settings
-   */
-  if (GS(id->name) == ID_SCR) {
-    bScreen *screen = id_cast<bScreen *>(id);
-    ScrArea *area;
-    SpaceLink *sl;
-
-    for (area = screen->areabase.first(); area; area = area->next) {
-      for (sl = area->spacedata.first(); sl; sl = sl->next) {
-        if (sl->spacetype == SPACE_CLIP) {
-          SpaceClip *sc = reinterpret_cast<SpaceClip *>(sl);
-
-          if (&sc->user == user) {
-            MovieClip *clip = ED_space_clip_get_clip(sc);
-
-            if (clip && (clip->flag & MCLIP_USE_PROXY)) {
-              BKE_movieclip_clear_cache(clip);
-              seq::relations_invalidate_movieclip_strips(bmain, clip);
-            }
-
-            break;
-          }
-        }
-      }
-    }
-  }
 }
 
 static PointerRNA rna_MovieClip_metadata_get(MovieClip *clip)

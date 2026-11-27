@@ -18,9 +18,6 @@
 #include "gpu_shader_node_socket.bsl.hh"                     /* IWYU pragma: export */
 #include "gpu_shader_nodelink.bsl.hh"                        /* IWYU pragma: export */
 #include "gpu_shader_polyline.bsl.hh"                        /* IWYU pragma: export */
-#include "gpu_shader_sequencer_scope.bsl.hh"                 /* IWYU pragma: export */
-#include "gpu_shader_sequencer_widget.bsl.hh"                /* IWYU pragma: export */
-#include "gpu_shader_sequencer_zebra.bsl.hh"                 /* IWYU pragma: export */
 #include "gpu_shader_simple.bsl.hh"                          /* IWYU pragma: export */
 #include "gpu_shader_text.bsl.hh"                            /* IWYU pragma: export */
 #include "gpu_shader_update_mipmaps.bsl.hh"                  /* IWYU pragma: export */

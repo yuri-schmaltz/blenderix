@@ -71,7 +71,6 @@
 #include "ED_outliner.hh"
 #include "ED_scene.hh"
 #include "ED_screen.hh"
-#include "ED_sequencer.hh"
 #include "ED_undo.hh"
 #include "ED_util.hh"
 
@@ -2348,7 +2347,7 @@ static void sequence_fn(int event, TreeElement *te, TreeStoreElem * /*tselem*/, 
   Editing *ed = seq::editing_get(scene);
   if (BLI_findindex(ed->current_strips(), strip) != -1) {
     if (event == OL_DOP_SELECT) {
-      vse::select_strip_single(scene, strip, true);
+      strip->flag |= SEQ_SELECT;
     }
     else if (event == OL_DOP_DESELECT) {
       strip->flag &= ~SEQ_SELECT;

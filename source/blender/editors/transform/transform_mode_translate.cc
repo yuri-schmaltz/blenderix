@@ -188,16 +188,6 @@ static void headerTranslation(TransInfo *t, const float vec[3], char str[UI_MAX_
   else {
     float dvec[3];
     copy_v3_v3(dvec, vec);
-    if (t->spacetype == SPACE_GRAPH) {
-      /* WORKAROUND:
-       * Special case where snapping is done in #recalData.
-       * Update the header based on the #center_local. */
-      eSnapMode autosnap = t->tsnap.mode;
-      float ival = TRANS_DATA_CONTAINER_FIRST_OK(t)->center_local[0];
-      float val = ival + dvec[0];
-      snapFrameTransform(t, autosnap, ival, val, &val);
-      dvec[0] = val - ival;
-    }
 
     if (t->flag & T_2D_EDIT) {
       applyAspectRatio(t, dvec);
@@ -528,16 +518,6 @@ static void applyTranslation(TransInfo *t)
   }
 
   applyTranslationValue(t, global_dir);
-
-  /* Evil hack - redo translation if clipping needed. */
-  if (t->flag & T_CLIP_UV && clip_uv_transform_translation(t, global_dir)) {
-    applyTranslationValue(t, global_dir);
-
-    /* Not ideal, see #clipUVData code-comment. */
-    if (t->flag & T_PROP_EDIT) {
-      clipUVData(t);
-    }
-  }
 
   /* Set the redo value. */
   mul_v3_m3v3(t->values_final, t->spacemtx_inv, global_dir);

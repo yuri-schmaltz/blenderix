@@ -17,31 +17,19 @@
 #include "BLI_index_mask.hh"
 #include "BLI_vector_set.hh"
 
-#include "ED_grease_pencil.hh"
-
 #include "UI_view2d.hh"
 
 #include "transform.hh"
 
 struct TransData;
-struct TransDataCurveHandleFlags;
 struct TransInfo;
 namespace blender {
 
 struct EditMesh;
 struct BMesh;
 struct bConstraint;
-struct BezTriple;
 struct Object;
 struct bContext;
-struct Strip;
-
-namespace bke::crazyspace {
-struct GeometryDeformation;
-}
-namespace bke {
-class CurvesGeometry;
-}
 
 namespace ed::transform {
 
@@ -100,53 +88,8 @@ struct TransDataVertSlideVert {
   }
 };
 
-/**
- * Structure used for curves transform operation.
- * Used for both curves and grease pencil objects.
- */
-struct CurvesTransformData {
-  Vector<ed::greasepencil::MutableDrawingInfo> drawings;
-  /**
-   * Store grease pencil keyframes that are duplicated during transform, later remove them when
-   * operation is cancelled.
-   */
-  Map<bke::greasepencil::Layer *, int> duplicate_layer_keyframes;
-
-  IndexMaskMemory memory;
-  Vector<IndexMask> selection_by_layer;
-
-  /**
-   * Masks of aligned points per curve.
-   * curves objects will only use the first element.
-   */
-  Vector<IndexMask> aligned_with_left;
-  Vector<IndexMask> aligned_with_right;
-
-  /**
-   * The offsets of every grease pencil layer into `positions` array.
-   * For curves layers are used to store: positions, handle_positions_left and
-   * handle_positions_right.
-   */
-  Vector<int> layer_offsets;
-
-  /**
-   * Grease pencil multi-frame editing falloff. One value for each drawing in a
-   * `TransDataContainer`.
-   */
-  Vector<float> grease_pencil_falloffs;
-
-  /**
-   * Copy of all positions being transformed.
-   */
-  Array<float3> positions;
-};
-
 /* `transform_convert.cc` */
 
-/**
- * Change the chain-length of auto-IK.
- */
-void transform_autoik_update(TransInfo *t, short mode);
 int special_transform_moving(TransInfo *t);
 /**
  * Inserting keys, point-cache, redraw events.
@@ -154,8 +97,6 @@ int special_transform_moving(TransInfo *t);
 void special_aftertrans_update(bContext *C, TransInfo *t);
 void sort_trans_data_dist(TransInfo *t);
 void create_trans_data(bContext *C, TransInfo *t);
-void clipUVData(TransInfo *t);
-void transform_convert_flush_handle2D(TransData *td, TransData2D *td2d, float y_fac);
 /**
  * Called for updating while transform acts, once per redraw.
  */
@@ -164,10 +105,6 @@ void recalc_data(TransInfo *t);
 /* `transform_convert_mesh.cc` */
 
 void transform_convert_mesh_customdatacorrect_init(TransInfo *t);
-
-/* `transform_convert_sequencer.cc` */
-
-bool transform_convert_sequencer_clamp(const TransInfo *t, float r_val[2]);
 
 /********************* intern **********************/
 
@@ -180,129 +117,12 @@ bool transform_mode_use_local_origins(const TransInfo *t);
  */
 void transform_around_single_fallback_ex(TransInfo *t, int data_len_all);
 void transform_around_single_fallback(TransInfo *t);
-/**
- * Little helper function for ObjectToTransData used to give certain
- * constraints (ChildOf, FollowPath, and others that may be added)
- * inverse corrections for transform, so that they aren't in CrazySpace.
- * These particular constraints benefit from this, but others don't, hence
- * this semi-hack ;-)    - Aligorith
- */
 bool constraints_list_needinv(TransInfo *t, ListBaseT<bConstraint> *list);
-void calc_distanceCurveVerts(TransData *head, TransData *tail, bool cyclic);
-/**
- * Utility function for getting the handle data from bezier's.
- */
-TransDataCurveHandleFlags *initTransDataCurveHandles(TransData *td, BezTriple *bezt);
-/**
- * Used for `TFM_TIME_EXTEND`.
- */
-char transform_convert_frame_side_dir_get(TransInfo *t, float cframe);
-/**
- * This function tests if a point is on the "mouse" side of the cursor/frame-marking.
- */
-bool FrameOnMouseSide(char side, float frame, float cframe);
 void transform_convert_clip_mirror_modifier_apply(TransDataContainer *tc);
-/**
- * For the realtime animation recording feature, handle overlapping data.
- */
-void animrecord_check_state(TransInfo *t, ID *id);
-
-/* `transform_convert_curves.cc` */
-
-namespace curves {
-
-/**
- * Used for both curves and Grease Pencil objects.
- */
-void curve_populate_trans_data_structs(const TransInfo &t,
-                                       TransDataContainer &tc,
-                                       bke::CurvesGeometry &curves,
-                                       const float4x4 &transform,
-                                       const bke::crazyspace::GeometryDeformation &deformation,
-                                       std::optional<MutableSpan<float>> value_attribute,
-                                       Span<IndexMask> points_to_transform_per_attr,
-                                       const IndexMask &affected_curves,
-                                       bool use_connected_only,
-                                       const IndexMask &bezier_curves,
-                                       void *extra = nullptr);
-
-CurvesTransformData *create_curves_transform_custom_data(TransCustomData &custom_data);
-
-void copy_positions_from_curves_transform_custom_data(const TransCustomData &custom_data,
-                                                      int layer,
-                                                      MutableSpan<float3> positions_dst);
-
-void create_aligned_handles_masks(const bke::CurvesGeometry &curves,
-                                  Span<IndexMask> points_to_transform_per_attr,
-                                  int curve_index,
-                                  TransCustomData &custom_data);
-void calculate_single_aligned_handles(const TransCustomData &custom_data,
-                                      bke::CurvesGeometry &curves,
-                                      int curve_index);
-bool update_handle_types_for_transform(eTfmMode mode,
-                                       const std::array<IndexMask, 3> &selection_per_attribute,
-                                       const IndexMask &bezier_points,
-                                       bke::CurvesGeometry &curves);
-
-}  // namespace curves
-
-/* `transform_convert_action.cc` */
-
-extern TransConvertTypeInfo TransConvertType_Action;
-
-/* `transform_convert_armature.cc` */
-
-extern TransConvertTypeInfo TransConvertType_EditArmature;
-extern TransConvertTypeInfo TransConvertType_Pose;
-
-/**
- * Sets transform flags in the bones.
- */
-void transform_convert_pose_transflags_update(Object *ob, int mode, short around);
 
 /* `transform_convert_cursor.cc` */
 
-extern TransConvertTypeInfo TransConvertType_CursorImage;
-extern TransConvertTypeInfo TransConvertType_CursorSequencer;
 extern TransConvertTypeInfo TransConvertType_Cursor3D;
-
-/* `transform_convert_curve.cc` */
-
-extern TransConvertTypeInfo TransConvertType_Curve;
-
-/* `transform_convert_curves.cc` */
-
-namespace curves {
-extern TransConvertTypeInfo TransConvertType_Curves;
-}
-
-/* `transform_convert_pointcloud.cc` */
-
-namespace pointcloud {
-extern TransConvertTypeInfo TransConvertType_PointCloud;
-}
-
-/* `transform_convert_graph.cc` */
-
-extern TransConvertTypeInfo TransConvertType_Graph;
-
-/* `transform_convert_greasepencil.cc` */
-
-namespace greasepencil {
-extern TransConvertTypeInfo TransConvertType_GreasePencil;
-}
-
-/* `transform_convert_lattice.cc` */
-
-extern TransConvertTypeInfo TransConvertType_Lattice;
-
-/* `transform_convert_mask.cc` */
-
-extern TransConvertTypeInfo TransConvertType_Mask;
-
-/* `transform_convert_mball.cc` */
-
-extern TransConvertTypeInfo TransConvertType_MBall;
 
 /* `transform_convert_mesh.cc` */
 
@@ -383,28 +203,9 @@ extern TransConvertTypeInfo TransConvertType_MeshEdge;
 
 extern TransConvertTypeInfo TransConvertType_MeshSkin;
 
-/* `transform_convert_mesh_uv.cc` */
-
-extern TransConvertTypeInfo TransConvertType_MeshUV;
-
-Array<TransDataVertSlideVert> transform_mesh_uv_vert_slide_data_create(
-    const TransInfo *t, TransDataContainer *tc, Vector<float3> &r_loc_dst_buffer);
-
-Array<TransDataEdgeSlideVert> transform_mesh_uv_edge_slide_data_create(const TransInfo *t,
-                                                                       TransDataContainer *tc,
-                                                                       int *r_group_len);
-
 /* `transform_convert_mesh_vert_cdata.cc` */
 
 extern TransConvertTypeInfo TransConvertType_MeshVertCData;
-
-/* `transform_convert_nla.cc` */
-
-extern TransConvertTypeInfo TransConvertType_NLA;
-
-/* `transform_convert_node.cc` */
-
-extern TransConvertTypeInfo TransConvertType_Node;
 
 /* `transform_convert_object.cc` */
 
@@ -413,59 +214,6 @@ extern TransConvertTypeInfo TransConvertType_Object;
 /* `transform_convert_object_texspace.cc` */
 
 extern TransConvertTypeInfo TransConvertType_ObjectTexSpace;
-
-/* `transform_convert_paintcurve.cc` */
-
-extern TransConvertTypeInfo TransConvertType_PaintCurve;
-
-/* `transform_convert_sculpt.cc` */
-
-extern TransConvertTypeInfo TransConvertType_Sculpt;
-
-/* `transform_convert_sequencer.cc` */
-
-extern TransConvertTypeInfo TransConvertType_Sequencer;
-
-/**
- * Sequencer transform customdata (stored in #TransCustomDataContainer).
- */
-struct TransSeq {
-  /* An array of TransDataSeq for either retiming or normal transform. */
-  void *tdseq;
-  /* Maximum delta allowed along x and y before clamping selected strips/handles. Always active. */
-  rcti offset_clamp;
-  /* Maximum delta before clamping handles to the bounds of underlying content. May be disabled. */
-  int hold_clamp_min = INT_MIN;
-  int hold_clamp_max = INT_MAX;
-
-  /* Initial rect of the view2d, used for computing offset during edge panning. */
-  rctf initial_v2d_cur;
-  ui::View2DEdgePanData edge_pan;
-
-  /* Strips that aren't selected, but their position entirely depends on transformed strips. */
-  VectorSet<Strip *> time_dependent_strips;
-
-  /* Overlap mode when the transform started, restored if the transform is canceled. */
-  eSeqOverlapMode overlap_mode_orig = SEQ_OVERLAP_OVERWRITE;
-};
-
-bool seq_transform_check_overlap(Span<Strip *> transformed_strips);
-
-/* `transform_convert_sequencer_image.cc` */
-
-extern TransConvertTypeInfo TransConvertType_SequencerImage;
-
-/* `transform_convert_sequencer_retiming.cc` */
-
-extern TransConvertTypeInfo TransConvertType_SequencerRetiming;
-
-/* `transform_convert_tracking.cc` */
-
-extern TransConvertTypeInfo TransConvertType_Tracking;
-
-/* `transform_convert_tracking_curves.cc` */
-
-extern TransConvertTypeInfo TransConvertType_TrackingCurves;
 
 }  // namespace ed::transform
 }  // namespace blender

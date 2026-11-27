@@ -27,7 +27,6 @@
 #include "BKE_paint.hh"
 
 #include "ED_object.hh"
-#include "ED_sequencer.hh"
 
 #include "RNA_define.hh"
 #include "RNA_enum_types.hh"
@@ -778,7 +777,6 @@ static const EnumPropertyItem eevee_resolution_scale_items[] = {
 #  include "ED_mesh.hh"
 #  include "ED_node.hh"
 #  include "ED_render.hh"
-#  include "ED_sequencer.hh"
 #  include "ED_uvedit.hh"
 #  include "ED_view3d.hh"
 
@@ -1152,10 +1150,9 @@ static void rna_Scene_show_subframe_update(Main * /*bmain*/,
   scene->r.subframe = 0.0f;
 }
 
-static void rna_Scene_frame_update_context(bContext *C, PointerRNA *ptr)
+static void rna_Scene_frame_update_context(bContext * /*C*/, PointerRNA *ptr)
 {
   Scene *scene = id_cast<Scene *>(ptr->owner_id);
-  ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
   DEG_id_tag_update(&scene->id, ID_RECALC_FRAME_CHANGE);
   WM_main_add_notifier(NC_SCENE | ND_FRAME, scene);
 }

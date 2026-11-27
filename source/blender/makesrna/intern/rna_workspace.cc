@@ -34,7 +34,6 @@
 
 #  include "ED_asset.hh"
 #  include "ED_paint.hh"
-#  include "ED_sequencer.hh"
 
 #  include "RNA_access.hh"
 
@@ -249,16 +248,9 @@ static int rna_WorkSpaceTool_widget_length(PointerRNA *ptr)
   return tref->runtime ? strlen(tref->runtime->gizmo_group) : 0;
 }
 
-static void rna_workspace_sync_scene_time_update(bContext *C, PointerRNA *ptr)
-{
-  ed::vse::sync_active_scene_and_time_with_scene_strip(*C);
-  ed::vse::sync_sequencer_scene_strip_range(CTX_data_main(C), ptr->data_as<WorkSpace>());
-}
+static void rna_workspace_sync_scene_time_update(bContext * /*C*/, PointerRNA * /*ptr*/) {}
 
-static void rna_workspace_strip_scene_range_update(bContext *C, PointerRNA *ptr)
-{
-  ed::vse::sync_sequencer_scene_strip_range(CTX_data_main(C), ptr->data_as<WorkSpace>());
-}
+static void rna_workspace_strip_scene_range_update(bContext * /*C*/, PointerRNA * /*ptr*/) {}
 
 }  // namespace blender
 

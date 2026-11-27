@@ -43,7 +43,6 @@
 #include "ED_outliner.hh"
 #include "ED_screen.hh"
 #include "ED_select_utils.hh"
-#include "ED_sequencer.hh"
 #include "ED_undo.hh"
 
 #include "SEQ_select.hh"
@@ -670,7 +669,6 @@ static void tree_element_strip_activate(bContext *C,
     if (set == OL_SETSEL_EXTEND) {
       seq::select_active_set(sequencer_scene, nullptr);
     }
-    vse::deselect_all_strips(sequencer_scene);
 
     if ((set == OL_SETSEL_EXTEND) && strip->flag & SEQ_SELECT) {
       strip->flag &= ~SEQ_SELECT;

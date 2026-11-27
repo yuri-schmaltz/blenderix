@@ -171,12 +171,6 @@ void VIEW3D_GGT_xform_shear(wmGizmoGroupType *gzgt);
 /* `transform_gizmo_extrude_3d.cc` */
 void VIEW3D_GGT_xform_extrude(wmGizmoGroupType *gzgt);
 
-/* Generic 2D transform gizmo callback assignment. */
-void ED_widgetgroup_gizmo2d_xform_callbacks_set(wmGizmoGroupType *gzgt);
-void ED_widgetgroup_gizmo2d_xform_no_cage_callbacks_set(wmGizmoGroupType *gzgt);
-void ED_widgetgroup_gizmo2d_resize_callbacks_set(wmGizmoGroupType *gzgt);
-void ED_widgetgroup_gizmo2d_rotate_callbacks_set(wmGizmoGroupType *gzgt);
-
 #define SNAP_INCREMENTAL_ANGLE DEG2RAD(5.0)
 #define SNAP_INCREMENTAL_SNAP_STEP 1.0f
 
@@ -213,23 +207,6 @@ int calc_gizmo_stats(const bContext *C,
                      const TransformCalcParams *params,
                      TransformBounds *tbounds,
                      RegionView3D *rv3d);
-
-/**
- * Iterates over all the strips and finds the closest snapping candidate of either \a left_frame
- * or \a right_frame, which might only be searched for on the given \a channel depending on snap
- * settings. The closest snapping candidate will be the closest start or end frame of an existing
- * strip.
- * \returns True if there was anything to snap to.
- */
-bool snap_sequencer_calc_drag_drop(Scene *scene,
-                                   ARegion *region,
-                                   const int left_frame,
-                                   const int right_frame,
-                                   const int channel,
-                                   int *r_snap_distance,
-                                   float2 *r_snap_point);
-
-void snap_sequencer_draw_drag_drop(Scene *scene, ARegion *region, const float2 snap_point);
 
 }  // namespace ed::transform
 }  // namespace blender

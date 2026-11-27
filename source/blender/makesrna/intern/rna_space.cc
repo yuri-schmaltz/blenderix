@@ -776,13 +776,11 @@ static const EnumPropertyItem spreadsheet_table_id_type_items[] = {
 #  include "ED_anim_api.hh"
 #  include "ED_asset.hh"
 #  include "ED_buttons.hh"
-#  include "ED_clip.hh"
 #  include "ED_fileselect.hh"
 #  include "ED_image.hh"
 #  include "ED_node.hh"
 #  include "ED_render.hh"
 #  include "ED_screen.hh"
-#  include "ED_sequencer.hh"
 #  include "ED_transform.hh"
 #  include "ED_view3d.hh"
 
@@ -3123,9 +3121,7 @@ static void rna_SpaceClipEditor_clip_set(PointerRNA *ptr,
                                          ReportList * /*reports*/)
 {
   SpaceClip *sc = static_cast<SpaceClip *>(ptr->data);
-  bScreen *screen = id_cast<bScreen *>(ptr->owner_id);
-
-  ED_space_clip_set_clip(nullptr, screen, sc, static_cast<MovieClip *>(value.data));
+  sc->clip = static_cast<MovieClip *>(value.data);
 }
 
 static void rna_SpaceClipEditor_mask_set(PointerRNA *ptr,
@@ -3133,8 +3129,7 @@ static void rna_SpaceClipEditor_mask_set(PointerRNA *ptr,
                                          ReportList * /*reports*/)
 {
   SpaceClip *sc = static_cast<SpaceClip *>(ptr->data);
-
-  ED_space_clip_set_mask(nullptr, sc, static_cast<Mask *>(value.data));
+  sc->mask_info.mask = static_cast<Mask *>(value.data);
 }
 
 static void rna_SpaceClipEditor_clip_mode_update(Main * /*bmain*/,

@@ -182,7 +182,7 @@ if(WITH_BLENDER)
   if(NOT WITH_HEADLESS)
     # Blender UI only.
 
-    data_to_c_simple(../../../../icon.png SRC)
+    data_to_c_simple(../../../../icons/icon.png SRC)
 
     set(SVG_FILENAMES_NOEXT
       action

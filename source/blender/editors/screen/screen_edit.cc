@@ -38,12 +38,10 @@
 #include "WM_api.hh"
 #include "WM_types.hh"
 
-#include "ED_clip.hh"
 #include "ED_node.hh"
 #include "ED_scene.hh"
 #include "ED_screen.hh"
 #include "ED_screen_types.hh"
-#include "ED_sequencer.hh"
 
 #include "RNA_access.hh"
 #include "RNA_enum_types.hh"
@@ -1959,8 +1957,8 @@ void ED_screen_animation_timer(
     sad->scene = scene;
     sad->view_layer = view_layer;
 
-    sad->do_scene_syncing = ed::vse::is_scene_time_sync_needed(*C);
-    sad->use_seq_scenestrip_range = ed::vse::is_scene_frame_range_from_strip_needed(*C);
+    sad->do_scene_syncing = false;
+    sad->use_seq_scenestrip_range = false;
 
     sad->sfra = scene->r.cfra;
     ED_scene_frame_clamp_for_playback(*C, scene, enable > 0);
@@ -2044,8 +2042,6 @@ void ED_update_for_newframe(Main *bmain, Depsgraph *depsgraph)
     }
     DEG_id_tag_update(&scene->id, ID_RECALC_SYNC_TO_EVAL | ID_RECALC_PARAMETERS);
   }
-
-  ED_clip_update_frame(bmain, scene->r.cfra);
 
   /* this function applies the changes too */
   BKE_scene_graph_update_for_newframe(depsgraph);

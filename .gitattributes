@@ -114,5 +114,5 @@ scripts/modules/_bpy_internal/assets/remote_library/*_openapi.py linguist-genera
 release/datafiles/startup.blend -filter -diff -merge
 release/darwin/Blender.app/Contents/Resources/blenderix.icns !text !filter !merge !diff
 "themes/Blender Themes 0023.zip" !text !filter !merge !diff
-icon.png !text !filter !merge !diff
+icons/icon.png !text !filter !merge !diff
 icons/options/** !text !filter !merge !diff

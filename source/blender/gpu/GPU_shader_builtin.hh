@@ -84,17 +84,6 @@ enum GPUBuiltinShader {
   /** Draw wide lines with uniform color. Has an additional clip plane parameter. */
   GPU_SHADER_3D_POLYLINE_CLIPPED_UNIFORM_COLOR,
 
-  /** Draw strip widgets in sequencer timeline. */
-  GPU_SHADER_SEQUENCER_STRIPS,
-  /** Draw strip thumbnails in sequencer timeline. */
-  GPU_SHADER_SEQUENCER_THUMBS,
-  /** Rasterize sequencer scope points into buffers via compute. */
-  GPU_SHADER_SEQUENCER_SCOPE_RASTER,
-  /** Resolve rasterized scope point buffers to display. */
-  GPU_SHADER_SEQUENCER_SCOPE_RESOLVE,
-  /** Draw sequencer zebra pattern (overexposed regions). */
-  GPU_SHADER_SEQUENCER_ZEBRA,
-
   /** Compute shaders to generate 2d index buffers (mainly for curve drawing). */
   GPU_SHADER_INDEXBUF_POINTS,
   GPU_SHADER_INDEXBUF_LINES,
