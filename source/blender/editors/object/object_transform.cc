@@ -656,7 +656,7 @@ static wmOperatorStatus apply_objects_internal(bContext *C,
   Main *bmain = CTX_data_main(C);
   Scene *scene = CTX_data_scene(C);
   Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
-  float rsmat[3][3], obmat[3][3], iobmat[3][3], mat[4][4], scale;
+  float rsmat[3][3], obmat[3][3], iobmat[3][3], mat[4][4];
   bool changed = true;
   bool const do_multi_user = apply_objects_internal_can_multiuser(C);
   float obact_invmat[4][4], obact_parent[4][4], obact_parentinv[4][4];

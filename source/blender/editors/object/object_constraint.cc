@@ -28,9 +28,7 @@
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
-#include "BIK_api.h"
 #include "BKE_action.hh"
-#include "BKE_armature.hh"
 #include "BKE_constraint.h"
 #include "BKE_context.hh"
 #include "BKE_fcurve.hh"
@@ -39,7 +37,6 @@
 #include "BKE_main.hh"
 #include "BKE_object.hh"
 #include "BKE_report.hh"
-#include "BKE_tracking.hh"
 
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_build.hh"
@@ -61,10 +58,6 @@
 #include "ED_object.hh"
 #include "ED_screen.hh"
 
-#include "ANIM_action.hh"
-#include "ANIM_action_legacy.hh"
-#include "ANIM_animdata.hh"
-
 #include "UI_interface.hh"
 #include "UI_interface_layout.hh"
 #include "UI_resources.hh"
@@ -79,36 +72,12 @@ namespace blender::ed::object {
 
 ListBaseT<bConstraint> *constraint_active_list(Object *ob)
 {
-  if (ob == nullptr) {
-    return nullptr;
-  }
-
-  if (ob->mode & OB_MODE_POSE) {
-    bPoseChannel *pchan;
-
-    pchan = BKE_pose_channel_active_if_bonecoll_visible(ob);
-    if (pchan) {
-      return &pchan->constraints;
-    }
-  }
-  else {
-    return &ob->constraints;
-  }
-
-  return nullptr;
+  return ob ? &ob->constraints : nullptr;
 }
 
-ListBaseT<bConstraint> *pose_constraint_list(const bContext *C)
+ListBaseT<bConstraint> *pose_constraint_list(const bContext * /*C*/)
 {
-  bPoseChannel *pose_bone = static_cast<bPoseChannel *>(CTX_data_pointer_get(C, "pose_bone").data);
-  if (pose_bone == nullptr) {
-    pose_bone = static_cast<bPoseChannel *>(CTX_data_pointer_get(C, "active_pose_bone").data);
-    if (pose_bone == nullptr) {
-      return nullptr;
-    }
-  }
-
-  return &pose_bone->constraints;
+  return nullptr;
 }
 
 ListBaseT<bConstraint> *constraint_list_from_constraint(Object *ob,
@@ -123,29 +92,10 @@ ListBaseT<bConstraint> *constraint_list_from_constraint(Object *ob,
     return nullptr;
   }
 
-  /* try object constraints first */
   if (BLI_findindex(&ob->constraints, con) != -1) {
     return &ob->constraints;
   }
 
-  /* if armature, try pose bones too */
-  if (ob->pose) {
-    /* try each bone in order
-     * NOTE: it's not possible to directly look up the active bone yet, so this will have to do
-     */
-    for (bPoseChannel &pchan : ob->pose->chanbase) {
-      if (BLI_findindex(&pchan.constraints, con) != -1) {
-
-        if (r_pchan) {
-          *r_pchan = &pchan;
-        }
-
-        return &pchan.constraints;
-      }
-    }
-  }
-
-  /* done */
   return nullptr;
 }
 
@@ -203,8 +153,7 @@ static void set_constraint_nth_target(bConstraint *con,
 /** \name Constraint Sanity Testing
  * \{ */
 
-static void test_constraint(
-    Main *bmain, Object *owner, bPoseChannel *pchan, bConstraint *con, int type)
+static void test_constraint(Main *bmain, Object *owner, bConstraint *con)
 {
   ListBaseT<bConstraintTarget> targets = {nullptr, nullptr};
   bool check_targets = true;
@@ -213,36 +162,7 @@ static void test_constraint(
   con->flag &= ~CONSTRAINT_DISABLE;
 
   if (con->type == CONSTRAINT_TYPE_KINEMATIC) {
-    bKinematicConstraint *data = static_cast<bKinematicConstraint *>(con->data);
-
-    /* Bad: we need a separate set of checks here as pole-target is optional...
-     * otherwise pole-target must exist too or else the constraint is deemed invalid. */
-
-    /* default IK check ... */
-    if (BKE_object_exists_check(bmain, data->tar) == 0) {
-      data->tar = nullptr;
-      con->flag |= CONSTRAINT_DISABLE;
-    }
-    else if (data->tar == owner) {
-      if (!BKE_armature_find_bone_name(BKE_armature_from_object(owner), data->subtarget)) {
-        con->flag |= CONSTRAINT_DISABLE;
-      }
-    }
-
-    if (data->poletar) {
-      if (BKE_object_exists_check(bmain, data->poletar) == 0) {
-        data->poletar = nullptr;
-        con->flag |= CONSTRAINT_DISABLE;
-      }
-      else if (data->poletar == owner) {
-        if (!BKE_armature_find_bone_name(BKE_armature_from_object(owner), data->polesubtarget)) {
-          con->flag |= CONSTRAINT_DISABLE;
-        }
-      }
-    }
-    /* ... can be overwritten here */
-    BIK_test_constraint(owner, con);
-    /* targets have already been checked for this */
+    con->flag |= CONSTRAINT_DISABLE;
     check_targets = false;
   }
   else if (con->type == CONSTRAINT_TYPE_PIVOT) {
@@ -254,9 +174,7 @@ static void test_constraint(
       con->flag |= CONSTRAINT_DISABLE;
     }
     else if (data->tar == owner) {
-      if (!BKE_armature_find_bone_name(BKE_armature_from_object(owner), data->subtarget)) {
-        con->flag |= CONSTRAINT_DISABLE;
-      }
+      con->flag |= CONSTRAINT_DISABLE;
     }
 
     /* targets have already been checked for this */
@@ -265,22 +183,9 @@ static void test_constraint(
   else if (con->type == CONSTRAINT_TYPE_ACTION) {
     bActionConstraint *data = static_cast<bActionConstraint *>(con->data);
 
-    /* validate action */
     if (data->act == nullptr) {
-      /* must have action */
       con->flag |= CONSTRAINT_DISABLE;
     }
-    else {
-      /* The slot was assigned, so assume that it is suitable to animate the
-       * owner (only suitable slots appear in the drop-down). */
-      animrig::Action &action = data->act->wrap();
-      animrig::Slot *slot = action.slot_for_handle(data->action_slot_handle);
-      if (!slot) {
-        con->flag |= CONSTRAINT_DISABLE;
-      }
-    }
-
-    /* Skip target checking if we're not using it */
     if (data->flag & ACTCON_USE_EVAL_TIME) {
       check_targets = false;
     }
@@ -320,59 +225,18 @@ static void test_constraint(
   else if (con->type == CONSTRAINT_TYPE_SPLINEIK) {
     bSplineIKConstraint *data = static_cast<bSplineIKConstraint *>(con->data);
 
-    /* if the number of points does not match the amount required by the chain length,
-     * free the points array and request a rebind...
-     */
     if ((data->points == nullptr) || (data->numpoints != data->chainlen + 1)) {
       MEM_SAFE_DELETE(data->points);
       data->numpoints = 0;
-
-      /* clear the bound flag, forcing a rebind next time this is evaluated */
       data->flag &= ~CONSTRAINT_SPLINEIK_BOUND;
     }
   }
-  else if (con->type == CONSTRAINT_TYPE_FOLLOWTRACK) {
-    bFollowTrackConstraint *data = static_cast<bFollowTrackConstraint *>(con->data);
-
-    if ((data->flag & FOLLOWTRACK_ACTIVECLIP) == 0) {
-      if (data->clip != nullptr && data->track[0]) {
-        MovieTracking *tracking = &data->clip->tracking;
-        MovieTrackingObject *tracking_object;
-
-        if (data->object[0]) {
-          tracking_object = BKE_tracking_object_get_named(tracking, data->object);
-        }
-        else {
-          tracking_object = BKE_tracking_object_get_camera(tracking);
-        }
-
-        if (!tracking_object) {
-          con->flag |= CONSTRAINT_DISABLE;
-        }
-        else {
-          if (!BKE_tracking_object_find_track_with_name(tracking_object, data->track)) {
-            con->flag |= CONSTRAINT_DISABLE;
-          }
-        }
-      }
-      else {
-        con->flag |= CONSTRAINT_DISABLE;
-      }
-    }
-  }
-  else if (con->type == CONSTRAINT_TYPE_CAMERASOLVER) {
-    bCameraSolverConstraint *data = static_cast<bCameraSolverConstraint *>(con->data);
-
-    if ((data->flag & CAMERASOLVER_ACTIVECLIP) == 0 && (data->clip == nullptr)) {
-      con->flag |= CONSTRAINT_DISABLE;
-    }
-  }
-  else if (con->type == CONSTRAINT_TYPE_OBJECTSOLVER) {
-    bObjectSolverConstraint *data = static_cast<bObjectSolverConstraint *>(con->data);
-
-    if ((data->flag & OBJECTSOLVER_ACTIVECLIP) == 0 && (data->clip == nullptr)) {
-      con->flag |= CONSTRAINT_DISABLE;
-    }
+  else if (ELEM(con->type,
+                CONSTRAINT_TYPE_FOLLOWTRACK,
+                CONSTRAINT_TYPE_CAMERASOLVER,
+                CONSTRAINT_TYPE_OBJECTSOLVER))
+  {
+    con->flag |= CONSTRAINT_DISABLE;
   }
   else if (con->type == CONSTRAINT_TYPE_TRANSFORM_CACHE) {
     bTransformCacheConstraint *data = static_cast<bTransformCacheConstraint *>(con->data);
@@ -386,70 +250,22 @@ static void test_constraint(
   if (check_targets && BKE_constraint_targets_get(con, &targets)) {
     /* disable and clear constraints targets that are incorrect */
     for (bConstraintTarget &ct : targets) {
-      /* general validity checks (for those constraints that need this) */
       if (BKE_object_exists_check(bmain, ct.tar) == 0) {
-        /* object doesn't exist, but constraint requires target */
         ct.tar = nullptr;
         con->flag |= CONSTRAINT_DISABLE;
       }
       else if (ct.tar == owner) {
-        if (type == CONSTRAINT_OBTYPE_BONE) {
-          if (!BKE_armature_find_bone_name(BKE_armature_from_object(owner), ct.subtarget)) {
-            /* bone must exist in armature... */
-            /* TODO: clear subtarget? */
-            con->flag |= CONSTRAINT_DISABLE;
-          }
-          else if (STREQ(pchan->name, ct.subtarget)) {
-            /* cannot target self */
-            ct.subtarget[0] = '\0';
-            con->flag |= CONSTRAINT_DISABLE;
-          }
-        }
-        else {
-          /* cannot use self as target */
-          ct.tar = nullptr;
-          con->flag |= CONSTRAINT_DISABLE;
-        }
+        ct.tar = nullptr;
+        con->flag |= CONSTRAINT_DISABLE;
       }
 
-      /* target checks for specific constraints */
       if (ELEM(con->type,
                CONSTRAINT_TYPE_FOLLOWPATH,
                CONSTRAINT_TYPE_CLAMPTO,
-               CONSTRAINT_TYPE_SPLINEIK))
+               CONSTRAINT_TYPE_SPLINEIK,
+               CONSTRAINT_TYPE_ARMATURE))
       {
-        if (ct.tar) {
-          /* The object type check is only needed here in case we have a placeholder
-           * object assigned (because the library containing the curve is missing).
-           *
-           * In other cases it should be impossible to have a type mismatch.
-           */
-          if (ct.tar->type != OB_CURVES_LEGACY) {
-            con->flag |= CONSTRAINT_DISABLE;
-          }
-          else {
-            Curve *cu = id_cast<Curve *>(ct.tar->data);
-
-            /* auto-set 'Path' setting on curve so this works. */
-            cu->flag |= CU_PATH;
-          }
-        }
-      }
-      else if (con->type == CONSTRAINT_TYPE_ARMATURE) {
-        if (ct.tar) {
-          /* The object type check is only needed here in case we have a placeholder
-           * object assigned (because the library containing the armature is missing).
-           *
-           * In other cases it should be impossible to have a type mismatch.
-           */
-          if (ct.tar->type != OB_ARMATURE) {
-            con->flag |= CONSTRAINT_DISABLE;
-          }
-          else if (!BKE_armature_find_bone_name(BKE_armature_from_object(ct.tar), ct.subtarget)) {
-            /* bone must exist in armature... */
-            con->flag |= CONSTRAINT_DISABLE;
-          }
-        }
+        con->flag |= CONSTRAINT_DISABLE;
       }
     }
 
@@ -457,97 +273,26 @@ static void test_constraint(
     BKE_constraint_targets_flush(con, &targets, false);
   }
   else if (check_targets) {
-    /* constraints with empty target list that actually require targets */
     if (ELEM(con->type, CONSTRAINT_TYPE_ARMATURE)) {
       con->flag |= CONSTRAINT_DISABLE;
     }
   }
 }
 
-static int constraint_type_get(Object *owner, bPoseChannel *pchan)
+void object_test_constraints(Main *bmain, Object *ob)
 {
-  int type;
-  /* Check parents */
-  if (pchan) {
-    switch (owner->type) {
-      case OB_ARMATURE:
-        type = CONSTRAINT_OBTYPE_BONE;
-        break;
-      default:
-        type = CONSTRAINT_OBTYPE_OBJECT;
-        break;
-    }
-  }
-  else {
-    type = CONSTRAINT_OBTYPE_OBJECT;
-  }
-  return type;
-}
-
-/* checks validity of object pointers, and NULLs,
- * if Bone doesn't exist it sets the CONSTRAINT_DISABLE flag.
- */
-static void test_constraints(Main *bmain, Object *ob, bPoseChannel *pchan)
-{
-  ListBaseT<bConstraint> *conlist = nullptr;
-  int type;
-
   if (ob == nullptr) {
     return;
   }
-
-  type = constraint_type_get(ob, pchan);
-
-  /* Get the constraint list for this object */
-  switch (type) {
-    case CONSTRAINT_OBTYPE_OBJECT:
-      conlist = &ob->constraints;
-      break;
-    case CONSTRAINT_OBTYPE_BONE:
-      conlist = &pchan->constraints;
-      break;
-  }
-
-  /* Check all constraints - is constraint valid? */
-  if (conlist) {
-    for (bConstraint &curcon : *conlist) {
-      test_constraint(bmain, ob, pchan, &curcon, type);
-    }
-  }
-}
-
-void object_test_constraints(Main *bmain, Object *ob)
-{
-  if (ob->constraints.first_) {
-    test_constraints(bmain, ob, nullptr);
-  }
-
-  if (ob->type == OB_ARMATURE && ob->pose) {
-    for (bPoseChannel &pchan : ob->pose->chanbase) {
-      if (pchan.constraints.first_) {
-        test_constraints(bmain, ob, &pchan);
-      }
-    }
+  for (bConstraint &curcon : ob->constraints) {
+    test_constraint(bmain, ob, &curcon);
   }
 }
 
 static void object_test_constraint(Main *bmain, Object *ob, bConstraint *con)
 {
-  if (ob->type == OB_ARMATURE && ob->pose) {
-    if (BLI_findindex(&ob->constraints, con) != -1) {
-      test_constraint(bmain, ob, nullptr, con, CONSTRAINT_OBTYPE_OBJECT);
-    }
-    else {
-      for (bPoseChannel &pchan : ob->pose->chanbase) {
-        if (BLI_findindex(&pchan.constraints, con) != -1) {
-          test_constraint(bmain, ob, &pchan, con, CONSTRAINT_OBTYPE_BONE);
-          break;
-        }
-      }
-    }
-  }
-  else {
-    test_constraint(bmain, ob, nullptr, con, CONSTRAINT_OBTYPE_OBJECT);
+  if (ob && con) {
+    test_constraint(bmain, ob, con);
   }
 }
 
