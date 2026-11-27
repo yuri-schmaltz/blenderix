@@ -13,6 +13,28 @@ class GlobalTransformPanelMixin:
     bl_category = "Item"
 
 
+class VIEW3D_PT_item_transform(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Item"
+    bl_label = "Transform"
+
+    @classmethod
+    def poll(cls, context):
+        return context.object is not None
+
+    def draw(self, context):
+        ob = context.object
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        layout.prop(ob, "location")
+        layout.prop(ob, "rotation_euler", text="Rotation")
+        layout.prop(ob, "scale")
+        layout.prop(ob, "dimensions")
+
+
 class VIEW3D_PT_copy_global_transform(GlobalTransformPanelMixin, Panel):
     bl_label = "World Space Transform"
 
@@ -173,6 +195,7 @@ class VIEW3D_PT_copy_global_transform_relative(GlobalTransformPanelMixin, Panel)
 
 
 classes = (
+    VIEW3D_PT_item_transform,
     VIEW3D_PT_copy_global_transform,
     VIEW3D_PT_copy_global_transform_mirror,
     VIEW3D_PT_copy_global_transform_relative,

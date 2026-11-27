@@ -12,6 +12,11 @@ from bpy.app.translations import (
 )
 
 
+def _context_mesh(context):
+    ob = context.object
+    return ob.data if ob is not None and ob.type == 'MESH' else None
+
+
 class MESH_MT_vertex_group_context_menu(Menu):
     bl_label = "Vertex Group Specials"
 
@@ -138,7 +143,7 @@ class MeshButtonsPanel:
     @classmethod
     def poll(cls, context):
         engine = context.engine
-        return context.mesh and (engine in cls.COMPAT_ENGINES)
+        return _context_mesh(context) is not None and (engine in cls.COMPAT_ENGINES)
 
 
 class DATA_PT_context_mesh(MeshButtonsPanel, Panel):
@@ -154,7 +159,7 @@ class DATA_PT_context_mesh(MeshButtonsPanel, Panel):
         layout = self.layout
 
         ob = context.object
-        mesh = context.mesh
+        mesh = _context_mesh(context)
         space = context.space_data
 
         if ob:
@@ -176,7 +181,7 @@ class DATA_PT_texture_space(MeshButtonsPanel, Panel):
         layout = self.layout
         layout.use_property_split = True
 
-        mesh = context.mesh
+        mesh = _context_mesh(context)
 
         layout.prop(mesh, "texture_mesh")
 
@@ -380,7 +385,7 @@ class DATA_PT_uv_texture(MeshButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
 
-        me = context.mesh
+        me = _context_mesh(context)
 
         row = layout.row()
         col = row.column()
@@ -409,7 +414,7 @@ class DATA_PT_remesh(MeshButtonsPanel, Panel):
         layout.use_property_decorate = False
         row = layout.row()
 
-        mesh = context.mesh
+        mesh = _context_mesh(context)
         row.prop(mesh, "remesh_mode", text="Mode", expand=True)
         col = layout.column()
         if mesh.remesh_mode == 'VOXEL':
@@ -440,7 +445,7 @@ class DATA_PT_customdata(MeshButtonsPanel, Panel):
         layout.use_property_split = True
         layout.use_property_decorate = False
 
-        me = context.mesh
+        me = _context_mesh(context)
         col = layout.column()
 
         col.operator("mesh.customdata_mask_clear", icon='X')
@@ -523,7 +528,7 @@ class DATA_PT_mesh_attributes(MeshButtonsPanel, Panel):
     }
 
     def draw(self, context):
-        mesh = context.mesh
+        mesh = _context_mesh(context)
 
         layout = self.layout
         row = layout.row()
@@ -552,7 +557,7 @@ class DATA_PT_mesh_attributes(MeshButtonsPanel, Panel):
 # None for vgroup and mesh. Those are already utilized in comparison.
 def draw_attribute_warnings(context, layout, attributes):
     ob = context.object
-    mesh = context.mesh
+    mesh = _context_mesh(context)
 
     if not mesh:
         return
@@ -658,7 +663,7 @@ class DATA_PT_vertex_colors(MeshButtonsPanel, Panel):
     }
 
     def draw(self, context):
-        mesh = context.mesh
+        mesh = _context_mesh(context)
 
         layout = self.layout
         row = layout.row()
