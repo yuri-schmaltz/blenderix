@@ -800,7 +800,7 @@ if(UNIX AND NOT APPLE)
       DESTINATION "."
     )
     install(
-      FILES ${CMAKE_SOURCE_DIR}/icons/icon.png
+      FILES ${CMAKE_SOURCE_DIR}/icon.png
       DESTINATION "."
       RENAME "blenderix.png"
     )
@@ -840,7 +840,7 @@ if(UNIX AND NOT APPLE)
       DESTINATION "./share/metainfo"
     )
     install(
-      FILES ${CMAKE_SOURCE_DIR}/icons/icon.png
+      FILES ${CMAKE_SOURCE_DIR}/icon.png
       DESTINATION "./share/icons/hicolor/512x512/apps"
       RENAME "blenderix.png"
     )
