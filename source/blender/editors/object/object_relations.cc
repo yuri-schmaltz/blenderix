@@ -41,14 +41,10 @@
 
 #include "BKE_action.hh"
 #include "BKE_anim_data.hh"
-#include "BKE_armature.hh"
 #include "BKE_collection.hh"
 #include "BKE_constraint.h"
 #include "BKE_context.hh"
-#include "BKE_curve.hh"
-#include "BKE_displist.h"
 #include "BKE_editmesh.hh"
-#include "BKE_fcurve.hh"
 #include "BKE_idtype.hh"
 #include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
@@ -60,9 +56,6 @@
 #include "BKE_material.hh"
 #include "BKE_mesh_types.hh"
 #include "BKE_modifier.hh"
-#include "BKE_node.hh"
-#include "BKE_node_runtime.hh"
-#include "BKE_node_tree_interface.hh"
 #include "BKE_object.hh"
 #include "BKE_object_types.hh"
 #include "BKE_paint.hh"
@@ -84,19 +77,10 @@
 #include "RNA_define.hh"
 #include "RNA_enum_types.hh"
 
-#include "ED_armature.hh"
-#include "ED_curve.hh"
-#include "ED_gpencil_legacy.hh"
-#include "ED_grease_pencil.hh"
 #include "ED_mesh.hh"
 #include "ED_object.hh"
 #include "ED_screen.hh"
 #include "ED_view3d.hh"
-
-#include "ANIM_action.hh"
-#include "ANIM_animdata.hh"
-
-#include "MOD_nodes.hh"
 
 #include "object_intern.hh"
 
@@ -108,14 +92,13 @@ namespace blender::ed::object {
 
 static bool vertex_parent_set_poll(bContext *C)
 {
-  return ED_operator_editmesh(C) || ED_operator_editsurfcurve(C) || ED_operator_editlattice(C);
+  return ED_operator_editmesh(C);
 }
 
 static wmOperatorStatus vertex_parent_set_exec(bContext *C, wmOperator *op)
 {
   Main *bmain = CTX_data_main(C);
   Scene *scene = CTX_data_scene(C);
-  View3D *v3d = CTX_wm_view3d(C);
   Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
   ViewLayer *view_layer = CTX_data_view_layer(C);
   Object *obedit = CTX_data_edit_object(C);
@@ -139,11 +122,6 @@ static wmOperatorStatus vertex_parent_set_exec(bContext *C, wmOperator *op)
 
     BKE_editmesh_looptris_and_normals_calc(em, BKE_editmesh_bmesh_ensure(mesh));
 
-    /* Make sure the evaluated mesh is updated.
-     *
-     * Most reliable way is to update the tagged objects, which will ensure
-     * proper copy-on-evaluation update, but also will make sure all dependent
-     * objects are also up to date. */
     BKE_scene_graph_update_tagged(depsgraph, bmain);
 
     BMVert *eve;
@@ -152,83 +130,6 @@ static wmOperatorStatus vertex_parent_set_exec(bContext *C, wmOperator *op)
     BMesh *bm = BKE_editmesh_bmesh_ensure(obedit);
     BM_ITER_MESH_INDEX (eve, &iter, bm, BM_VERTS_OF_MESH, curr_index) {
       if (BM_elem_flag_test(eve, BM_ELEM_SELECT)) {
-        if (par1 == INDEX_UNSET) {
-          par1 = curr_index;
-        }
-        else if (par2 == INDEX_UNSET) {
-          par2 = curr_index;
-        }
-        else if (par3 == INDEX_UNSET) {
-          par3 = curr_index;
-        }
-        else if (par4 == INDEX_UNSET) {
-          par4 = curr_index;
-        }
-        else {
-          break;
-        }
-      }
-    }
-  }
-  else if (ELEM(obedit->type, OB_SURF, OB_CURVES_LEGACY)) {
-    ListBaseT<Nurb> *editnurb = object_editcurve_get(obedit);
-    int curr_index = 0;
-    for (Nurb *nu = editnurb->first(); nu != nullptr; nu = nu->next) {
-      if (nu->type == CU_BEZIER) {
-        BezTriple *bezt = nu->bezt;
-        for (int nurb_index = 0; nurb_index < nu->pntsu; nurb_index++, bezt++, curr_index++) {
-          if (BEZT_ISSEL_ANY_HIDDENHANDLES(v3d, bezt)) {
-            if (par1 == INDEX_UNSET) {
-              par1 = curr_index;
-            }
-            else if (par2 == INDEX_UNSET) {
-              par2 = curr_index;
-            }
-            else if (par3 == INDEX_UNSET) {
-              par3 = curr_index;
-            }
-            else if (par4 == INDEX_UNSET) {
-              par4 = curr_index;
-            }
-            else {
-              break;
-            }
-          }
-        }
-      }
-      else {
-        BPoint *bp = nu->bp;
-        const int points_num = nu->pntsu * nu->pntsv;
-        for (int nurb_index = 0; nurb_index < points_num; nurb_index++, bp++, curr_index++) {
-          if (bp->f1 & SELECT) {
-            if (par1 == INDEX_UNSET) {
-              par1 = curr_index;
-            }
-            else if (par2 == INDEX_UNSET) {
-              par2 = curr_index;
-            }
-            else if (par3 == INDEX_UNSET) {
-              par3 = curr_index;
-            }
-            else if (par4 == INDEX_UNSET) {
-              par4 = curr_index;
-            }
-            else {
-              break;
-            }
-          }
-        }
-      }
-    }
-  }
-  else if (obedit->type == OB_LATTICE) {
-    Lattice *lt = id_cast<Lattice *>(obedit->data);
-
-    const int points_num = lt->editlatt->latt->pntsu * lt->editlatt->latt->pntsv *
-                           lt->editlatt->latt->pntsw;
-    BPoint *bp = lt->editlatt->latt->def;
-    for (int curr_index = 0; curr_index < points_num; curr_index++, bp++) {
-      if (bp->f1 & SELECT) {
         if (par1 == INDEX_UNSET) {
           par1 = curr_index;
         }
@@ -515,15 +416,13 @@ static bool parent_set_with_depsgraph(ReportList *reports,
                                       Depsgraph *depsgraph,
                                       Object *const ob,
                                       Object *const par,
-                                      Object *const parent_eval,
+                                      Object *const /*parent_eval*/,
                                       int partype,
-                                      const bool xmirror,
+                                      const bool /*xmirror*/,
                                       const bool keep_transform,
                                       const int vert_par[3])
 {
   Main *bmain = CTX_data_main(C);
-  bPoseChannel *pchan = nullptr;
-  bPoseChannel *pchan_eval = nullptr;
 
   /* Preconditions. */
   if (ob == par) {
@@ -536,175 +435,22 @@ static bool parent_set_with_depsgraph(ReportList *reports,
     return false;
   }
 
-  switch (partype) {
-    case PAR_FOLLOW:
-    case PAR_PATH_CONST: {
-      if (par->type != OB_CURVES_LEGACY) {
-        return false;
-      }
-      Curve *cu = id_cast<Curve *>(par->data);
-      Curve *cu_eval = id_cast<Curve *>(parent_eval->data);
-      if ((cu->flag & CU_PATH) == 0) {
-        cu->flag |= CU_PATH | CU_FOLLOW;
-        cu_eval->flag |= CU_PATH | CU_FOLLOW;
-        /* force creation of path data */
-        BKE_displist_make_curveTypes(depsgraph, scene, par, false);
-      }
-      else {
-        cu->flag |= CU_FOLLOW;
-        cu_eval->flag |= CU_FOLLOW;
-      }
-
-      /* if follow, add F-Curve for ctime (i.e. "eval_time") so that path-follow works */
-      if (partype == PAR_FOLLOW) {
-        /* get or create F-Curve */
-        bAction *act = animrig::id_action_ensure(bmain, &cu->id);
-        PointerRNA id_ptr = RNA_id_pointer_create(&cu->id);
-        FCurve *fcu = animrig::action_fcurve_ensure_ex(bmain, act, &id_ptr, {"eval_time", 0});
-
-        /* setup dummy 'generator' modifier here to get 1-1 correspondence still working */
-        if (!fcu->bezt && !fcu->fpt && !fcu->modifiers.first_) {
-          add_fmodifier(&fcu->modifiers, FMODIFIER_TYPE_GENERATOR, fcu);
-        }
-      }
-
-      /* fall back on regular parenting now (for follow only) */
-      if (partype == PAR_FOLLOW) {
-        partype = PAR_OBJECT;
-      }
-      break;
-    }
-    case PAR_BONE:
-    case PAR_BONE_RELATIVE:
-      pchan = BKE_pose_channel_active_if_bonecoll_visible(par);
-      pchan_eval = BKE_pose_channel_active_if_bonecoll_visible(parent_eval);
-
-      if (pchan == nullptr || pchan_eval == nullptr) {
-        /* If pchan_eval is nullptr, pchan should also be nullptr. */
-        BLI_assert_msg(pchan == nullptr, "Missing evaluated bone data");
-        BKE_report(reports, RPT_ERROR, "No active bone");
-        return false;
-      }
+  if (!ELEM(partype, PAR_OBJECT, PAR_VERTEX, PAR_VERTEX_TRI)) {
+    BKE_report(reports, RPT_ERROR, "Parenting mode not supported in mesh-only build");
+    return false;
   }
 
   /* Apply transformation of previous parenting. */
   if (keep_transform) {
-    /* Was removed because of bug #23577,      * but this can be handy in some cases too #32616, so
-     * make optional. */
     BKE_object_apply_mat4(ob, ob->object_to_world().ptr(), false, false);
   }
 
-  /* Set the parent (except for follow-path constraint option). */
-  if (partype != PAR_PATH_CONST) {
-    ob->parent = par;
-    BKE_collection_object_parented_sort_index_reset(*bmain, *ob);
-    /* Always clear parentinv matrix for sake of consistency, see #41950. */
-    unit_m4(ob->parentinv);
-  }
-
-  /* Handle types. */
-  if (pchan) {
-    STRNCPY_UTF8(ob->parsubstr, pchan->name);
-  }
-  else {
-    ob->parsubstr[0] = 0;
-  }
+  ob->parent = par;
+  BKE_collection_object_parented_sort_index_reset(*bmain, *ob);
+  unit_m4(ob->parentinv);
+  ob->parsubstr[0] = 0;
 
   switch (partype) {
-    case PAR_PATH_CONST:
-      /* Don't do anything here, since this is not technically "parenting". */
-      break;
-    case PAR_CURVE:
-    case PAR_LATTICE:
-    case PAR_ARMATURE:
-    case PAR_ARMATURE_NAME:
-    case PAR_ARMATURE_ENVELOPE:
-    case PAR_ARMATURE_AUTO:
-      /* partype is now set to PAROBJECT so that invisible 'virtual'
-       * modifiers don't need to be created.
-       * NOTE: the old (2.4x) method was to set ob->partype = PARSKEL,        * creating the
-       * virtual modifiers.
-       */
-      ob->partype = PAROBJECT; /* NOTE: DNA define, not operator property. */
-      // ob->partype = PARSKEL; /* NOTE: DNA define, not operator property. */
-
-      /* BUT, to keep the deforms, we need a modifier,        * and then we need to set the object
-       * that it uses
-       * - We need to ensure that the modifier we're adding doesn't already exist,        *   so we
-       * check this by assuming that the parent is selected too.
-       */
-      /* XXX currently this should only happen for meshes, curves, surfaces,        * and lattices
-       * - this stuff isn't available for meta-balls yet. */
-      if (ELEM(
-              ob->type, OB_MESH, OB_CURVES_LEGACY, OB_SURF, OB_FONT, OB_LATTICE, OB_GREASE_PENCIL))
-      {
-        ModifierData *md;
-
-        switch (partype) {
-          case PAR_CURVE: /* curve deform */
-            if (BKE_modifiers_is_deformed_by_curve(ob) != par) {
-              md = modifier_add(reports, bmain, scene, ob, nullptr, eModifierType_Curve);
-              if (md) {
-                (reinterpret_cast<CurveModifierData *>(md))->object = par;
-              }
-              if (par->runtime->curve_cache &&
-                  par->runtime->curve_cache->anim_path_accum_length == nullptr)
-              {
-                DEG_id_tag_update(&par->id, ID_RECALC_GEOMETRY);
-              }
-            }
-            break;
-          case PAR_LATTICE: /* lattice deform */
-            if (BKE_modifiers_is_deformed_by_lattice(ob) != par) {
-              const bool is_grease_pencil = ob->type == OB_GREASE_PENCIL;
-              const ModifierType lattice_modifier_type = is_grease_pencil ?
-                                                             eModifierType_GreasePencilLattice :
-                                                             eModifierType_Lattice;
-              md = modifier_add(reports, bmain, scene, ob, nullptr, lattice_modifier_type);
-              if (md) {
-                if (is_grease_pencil) {
-                  reinterpret_cast<GreasePencilLatticeModifierData *>(md)->object = par;
-                }
-                else {
-                  reinterpret_cast<LatticeModifierData *>(md)->object = par;
-                }
-              }
-            }
-            break;
-          default: /* armature deform */
-            if (BKE_modifiers_is_deformed_by_armature(ob) != par) {
-              if (ob->type == OB_GREASE_PENCIL) {
-                md = modifier_add(
-                    reports, bmain, scene, ob, nullptr, eModifierType_GreasePencilArmature);
-                if (md) {
-                  (reinterpret_cast<GreasePencilArmatureModifierData *>(md))->object = par;
-                }
-              }
-              else {
-                md = modifier_add(reports, bmain, scene, ob, nullptr, eModifierType_Armature);
-                if (md) {
-                  (reinterpret_cast<ArmatureModifierData *>(md))->object = par;
-                }
-              }
-            }
-            break;
-        }
-      }
-      break;
-    case PAR_BONE:
-      ob->partype = PARBONE; /* NOTE: DNA define, not operator property. */
-      if (Bone *bone = pchan->bone_get(*par)) {
-        bone->flag &= ~BONE_RELATIVE_PARENTING;
-        pchan_eval->bone_get(*parent_eval)->flag &= ~BONE_RELATIVE_PARENTING;
-      }
-      break;
-    case PAR_BONE_RELATIVE:
-      ob->partype = PARBONE; /* NOTE: DNA define, not operator property. */
-      if (Bone *bone = pchan->bone_get(*par)) {
-        bone->flag |= BONE_RELATIVE_PARENTING;
-        pchan_eval->bone_get(*parent_eval)->flag |= BONE_RELATIVE_PARENTING;
-      }
-      break;
     case PAR_VERTEX:
       ob->partype = PARVERT1;
       ob->par1 = vert_par[0];
@@ -713,76 +459,13 @@ static bool parent_set_with_depsgraph(ReportList *reports,
       ob->partype = PARVERT3;
       copy_v3_v3_int(&ob->par1, vert_par);
       break;
-    case PAR_OBJECT:
-    case PAR_FOLLOW:
-      ob->partype = PAROBJECT; /* NOTE: DNA define, not operator property. */
+    default:
+      ob->partype = PAROBJECT;
       break;
   }
 
-  /* Constraint and set parent inverse. */
-  const bool is_armature_parent = ELEM(
-      partype, PAR_ARMATURE, PAR_ARMATURE_NAME, PAR_ARMATURE_ENVELOPE, PAR_ARMATURE_AUTO);
-  if (partype == PAR_PATH_CONST) {
-    bConstraint *con;
-    bFollowPathConstraint *data;
-    float cmat[4][4], vec[3];
-
-    con = BKE_constraint_add_for_object(ob, "AutoPath", CONSTRAINT_TYPE_FOLLOWPATH);
-
-    data = static_cast<bFollowPathConstraint *>(con->data);
-    data->tar = par;
-
-    BKE_constraint_target_matrix_get(
-        depsgraph, scene, con, 0, CONSTRAINT_OBTYPE_OBJECT, nullptr, cmat, scene->r.cfra);
-    sub_v3_v3v3(vec, ob->object_to_world().location(), cmat[3]);
-
-    copy_v3_v3(ob->loc, vec);
-  }
-  else if (is_armature_parent && (ob->type == OB_LATTICE) && (par->type == OB_ARMATURE) &&
-           (partype == PAR_ARMATURE_NAME))
-  {
-    ED_object_vgroup_calc_from_armature(
-        reports, depsgraph, scene, ob, par, ARM_GROUPS_NAME, false);
-  }
-  else if (is_armature_parent && (ob->type == OB_MESH) && (par->type == OB_ARMATURE)) {
-    if (partype == PAR_ARMATURE_NAME) {
-      ED_object_vgroup_calc_from_armature(
-          reports, depsgraph, scene, ob, par, ARM_GROUPS_NAME, false);
-    }
-    else if (partype == PAR_ARMATURE_ENVELOPE) {
-      ED_object_vgroup_calc_from_armature(
-          reports, depsgraph, scene, ob, par, ARM_GROUPS_ENVELOPE, xmirror);
-    }
-    else if (partype == PAR_ARMATURE_AUTO) {
-      WM_cursor_wait(true);
-      ED_object_vgroup_calc_from_armature(
-          reports, depsgraph, scene, ob, par, ARM_GROUPS_AUTO, xmirror);
-      WM_cursor_wait(false);
-    }
-    /* Get corrected inverse. */
-    ob->partype = PAROBJECT;
-
-    invert_m4_m4(ob->parentinv, BKE_object_calc_parent(depsgraph, scene, ob).ptr());
-  }
-  else if (is_armature_parent && (ob->type == OB_GREASE_PENCIL) && (par->type == OB_ARMATURE)) {
-    if (partype == PAR_ARMATURE_NAME) {
-      ed::greasepencil::add_armature_vertex_groups(*ob, *par);
-    }
-    else if (partype == PAR_ARMATURE_ENVELOPE) {
-      ed::greasepencil::add_armature_envelope_weights(*scene, *ob, *par);
-    }
-    else if (partype == PAR_ARMATURE_AUTO) {
-      ed::greasepencil::add_armature_automatic_weights(*scene, *ob, *par);
-    }
-    /* get corrected inverse */
-    ob->partype = PAROBJECT;
-
-    invert_m4_m4(ob->parentinv, BKE_object_calc_parent(depsgraph, scene, ob).ptr());
-  }
-  else {
-    /* calculate inverse parent matrix */
-    invert_m4_m4(ob->parentinv, BKE_object_calc_parent(depsgraph, scene, ob).ptr());
-  }
+  /* calculate inverse parent matrix */
+  invert_m4_m4(ob->parentinv, BKE_object_calc_parent(depsgraph, scene, ob).ptr());
 
   DEG_id_tag_update(&par->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
   DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
@@ -997,80 +680,8 @@ static wmOperatorStatus parent_set_invoke_menu(bContext *C, wmOperatorType *ot)
                      ICON_NONE);
   RNA_boolean_set(&op_ptr, "keep_transform", true);
 
-  struct {
-    bool armature_deform, empty_groups, envelope_weights, automatic_weights, attach_surface;
-  } can_support = {false};
-
-  CTX_DATA_BEGIN (C, Object *, child, selected_editable_objects) {
-    if (child == parent) {
-      continue;
-    }
-    if (ELEM(child->type,
-             OB_MESH,
-             OB_CURVES_LEGACY,
-             OB_SURF,
-             OB_FONT,
-             OB_GREASE_PENCIL,
-             OB_LATTICE))
-    {
-      can_support.armature_deform = true;
-      can_support.envelope_weights = true;
-    }
-    if (ELEM(child->type, OB_MESH, OB_GREASE_PENCIL, OB_LATTICE)) {
-      can_support.empty_groups = true;
-    }
-    if (ELEM(child->type, OB_MESH, OB_GREASE_PENCIL)) {
-      can_support.automatic_weights = true;
-    }
-    if (child->type == OB_CURVES) {
-      can_support.attach_surface = true;
-    }
-  }
-  CTX_DATA_END;
-
-  if (parent->type == OB_ARMATURE) {
-
-    if (can_support.armature_deform) {
-      op_ptr = layout.op(ot, IFACE_("Armature Deform"), ICON_OUTLINER_OB_ARMATURE);
-      RNA_enum_set(&op_ptr, "type", PAR_ARMATURE);
-    }
-    if (can_support.empty_groups) {
-      op_ptr = layout.op(ot, IFACE_("   With Empty Groups"), ICON_NONE);
-      RNA_enum_set(&op_ptr, "type", PAR_ARMATURE_NAME);
-    }
-    if (can_support.envelope_weights) {
-      op_ptr = layout.op(ot, IFACE_("   With Envelope Weights"), ICON_NONE);
-      RNA_enum_set(&op_ptr, "type", PAR_ARMATURE_ENVELOPE);
-    }
-    if (can_support.automatic_weights) {
-      op_ptr = layout.op(ot, IFACE_("   With Automatic Weights"), ICON_NONE);
-      RNA_enum_set(&op_ptr, "type", PAR_ARMATURE_AUTO);
-    }
-    op_ptr = layout.op(ot, IFACE_("Bone"), ICON_BONE_DATA);
-    RNA_enum_set(&op_ptr, "type", PAR_BONE);
-    op_ptr = layout.op(ot, IFACE_("Bone Relative"), ICON_NONE);
-    RNA_enum_set(&op_ptr, "type", PAR_BONE_RELATIVE);
-  }
-  else if (parent->type == OB_CURVES_LEGACY) {
-    op_ptr = layout.op(ot, IFACE_("Curve Deform"), ICON_OUTLINER_OB_CURVE);
-    RNA_enum_set(&op_ptr, "type", PAR_CURVE);
-    op_ptr = layout.op(ot, IFACE_("Follow Path"), ICON_CURVE_PATH);
-    RNA_enum_set(&op_ptr, "type", PAR_FOLLOW);
-    op_ptr = layout.op(ot, IFACE_("Path Constraint"), ICON_NONE);
-    RNA_enum_set(&op_ptr, "type", PAR_PATH_CONST);
-  }
-  else if (parent->type == OB_LATTICE) {
-    op_ptr = layout.op(ot, IFACE_("Lattice Deform"), ICON_OUTLINER_OB_LATTICE);
-    RNA_enum_set(&op_ptr, "type", PAR_LATTICE);
-  }
-  else if (parent->type == OB_MESH) {
-    if (can_support.attach_surface) {
-      layout.op("CURVES_OT_surface_set", IFACE_("Object (Attach Curves to Surface)"), ICON_NONE);
-    }
-  }
-
   /* vertex parenting */
-  if (OB_TYPE_SUPPORT_PARVERT(parent->type)) {
+  if (parent->type == OB_MESH) {
     op_ptr = layout.op(ot, IFACE_("Vertex"), ICON_VERTEXSEL);
     RNA_enum_set(&op_ptr, "type", PAR_VERTEX);
     op_ptr = layout.op(ot, IFACE_("Vertex (Triangle)"), ICON_NONE);
@@ -1541,10 +1152,6 @@ static wmOperatorStatus make_links_data_exec(bContext *C, wmOperator *op)
             BKE_sculptsession_free_pbvh(*ob_dst);
             /* if amount of material indices changed: */
             BKE_object_materials_sync_length(bmain, ob_dst, ob_dst->data);
-
-            if (ob_dst->type == OB_ARMATURE) {
-              BKE_pose_rebuild(bmain, ob_dst, id_cast<bArmature *>(ob_dst->data), true);
-            }
             DEG_id_tag_update(&ob_dst->id, ID_RECALC_GEOMETRY);
             break;
           case MAKE_LINKS_MATERIALS:
@@ -1927,7 +1534,6 @@ static void single_obdata_users(
                                                  static_cast<const ID *>(ob->data),
                                                  nullptr,
                                                  LIB_ID_COPY_DEFAULT | LIB_ID_COPY_ACTIONS));
-            BKE_pose_rebuild(bmain, ob, id_cast<bArmature *>(ob->data), true);
             break;
           case OB_SPEAKER:
             ob->data = ID_NEW_SET(ob->data,
@@ -3015,93 +2621,18 @@ void OBJECT_OT_drop_named_material(wmOperatorType *ot)
 /** \name Drop Geometry Nodes on Object Operator
  * \{ */
 
-std::string drop_geometry_nodes_tooltip(bContext *C, PointerRNA *properties, const int mval[2])
+std::string drop_geometry_nodes_tooltip(bContext * /*C*/,
+                                        PointerRNA * /*properties*/,
+                                        const int /*mval*/[2])
 {
-  const Object *ob = ED_view3d_give_object_under_cursor(C, mval);
-  if (ob == nullptr) {
-    return {};
-  }
-
-  const uint32_t session_uid = RNA_int_get(properties, "session_uid");
-  const ID *id = BKE_libblock_find_session_uid(CTX_data_main(C), ID_NT, session_uid);
-  if (!id) {
-    return {};
-  }
-
-  return fmt::format(fmt::runtime(TIP_("Add modifier with node group \"{}\" on object \"{}\"")),
-                     id->name,
-                     ob->id.name);
+  return {};
 }
 
-static bool check_geometry_node_group_sockets(wmOperator *op, const bNodeTree *tree)
+static wmOperatorStatus drop_geometry_nodes_invoke(bContext * /*C*/,
+                                                   wmOperator * /*op*/,
+                                                   const wmEvent * /*event*/)
 {
-  tree->ensure_interface_cache();
-  if (!tree->interface_outputs().is_empty()) {
-    const bNodeTreeInterfaceSocket *first_output = tree->interface_outputs()[0];
-    if (!first_output) {
-      BKE_report(op->reports, RPT_ERROR, "The node group must have a geometry output socket");
-      return false;
-    }
-    const bke::bNodeSocketType *typeinfo = first_output->socket_typeinfo();
-    const eNodeSocketDatatype type = typeinfo ? typeinfo->type : SOCK_CUSTOM;
-    if (type != SOCK_GEOMETRY) {
-      BKE_report(op->reports, RPT_ERROR, "The first output must be a geometry socket");
-      return false;
-    }
-  }
-  return true;
-}
-
-static wmOperatorStatus drop_geometry_nodes_invoke(bContext *C,
-                                                   wmOperator *op,
-                                                   const wmEvent *event)
-{
-  Object *ob = ED_view3d_give_object_under_cursor(C, event->mval);
-  if (!ob) {
-    return OPERATOR_CANCELLED;
-  }
-
-  Main *bmain = CTX_data_main(C);
-  Scene *scene = CTX_data_scene(C);
-
-  const uint32_t uid = RNA_int_get(op->ptr, "session_uid");
-  bNodeTree *node_tree = id_cast<bNodeTree *>(BKE_libblock_find_session_uid(bmain, ID_NT, uid));
-  if (!node_tree) {
-    return OPERATOR_CANCELLED;
-  }
-  if (node_tree->type != NTREE_GEOMETRY) {
-    BKE_report(op->reports, RPT_ERROR, "Node group must be a geometry node tree");
-    return OPERATOR_CANCELLED;
-  }
-
-  if (!check_geometry_node_group_sockets(op, node_tree)) {
-    return OPERATOR_CANCELLED;
-  }
-
-  NodesModifierData *nmd = reinterpret_cast<NodesModifierData *>(
-      modifier_add(op->reports, bmain, scene, ob, node_tree->id.name + 2, eModifierType_Nodes));
-  if (!nmd) {
-    BKE_report(op->reports, RPT_ERROR, "Could not add geometry nodes modifier");
-    return OPERATOR_CANCELLED;
-  }
-
-  if (!RNA_boolean_get(op->ptr, "show_datablock_in_modifier")) {
-    nmd->flag |= NODES_MODIFIER_HIDE_DATABLOCK_SELECTOR;
-  }
-  SET_FLAG_FROM_TEST(nmd->flag,
-                     node_tree->geometry_node_asset_traits &&
-                         (node_tree->geometry_node_asset_traits->flag &
-                          GEO_NODE_ASSET_HIDE_MODIFIER_MANAGE_PANEL),
-                     NODES_MODIFIER_HIDE_MANAGE_PANEL);
-
-  nmd->node_group = node_tree;
-  id_us_plus(&node_tree->id);
-  MOD_nodes_update_interface(*bmain, ob, nmd);
-
-  DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
-  WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, nullptr);
-
-  return OPERATOR_FINISHED;
+  return OPERATOR_CANCELLED;
 }
 
 void OBJECT_OT_drop_geometry_nodes(wmOperatorType *ot)

@@ -1305,171 +1305,6 @@ class VIEW3D_MT_mesh_add(Menu):
         layout.template_node_operator_asset_menu_items(catalog_path="Add")
 
 
-class VIEW3D_MT_curve_add(Menu):
-    bl_idname = "VIEW3D_MT_curve_add"
-    bl_label = "Curve"
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, context):
-        layout = self.layout
-
-        layout.operator_context = 'INVOKE_REGION_WIN'
-
-
-        layout.separator()
-
-
-        layout.separator()
-
-        layout.operator("object.curves_empty_hair_add", text="Empty Hair", icon='CURVES_DATA')
-        # Greyed out here instead of the operator's poll function, see: #163934.
-        col = layout.column()
-        col.enabled = _has_selected_object_type(context, {'MESH'})
-        del col
-
-        experimental = context.preferences.experimental
-        if experimental.use_new_curves_tools:
-            layout.operator("object.curves_random_add", text="Random", icon='CURVES_DATA')
-
-
-class VIEW3D_MT_surface_add(Menu):
-    bl_idname = "VIEW3D_MT_surface_add"
-    bl_label = "Surface"
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, _context):
-        layout = self.layout
-
-        layout.operator_context = 'INVOKE_REGION_WIN'
-
-
-
-class VIEW3D_MT_edit_metaball_context_menu(Menu):
-    bl_label = "Metaball"
-
-    def draw(self, _context):
-        layout = self.layout
-
-        layout.operator_context = 'INVOKE_REGION_WIN'
-
-        # Add
-
-        layout.separator()
-
-        # Modify
-        layout.menu("VIEW3D_MT_mirror")
-        layout.menu("VIEW3D_MT_snap")
-
-        layout.separator()
-
-        # Remove
-        layout.operator_context = 'EXEC_REGION_WIN'
-
-
-class VIEW3D_MT_metaball_add(Menu):
-    bl_idname = "VIEW3D_MT_metaball_add"
-    bl_label = "Metaball"
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, _context):
-        layout = self.layout
-
-        layout.operator_context = 'INVOKE_REGION_WIN'
-        layout.operator_enum("object.metaball_add", "type")
-
-
-class TOPBAR_MT_edit_curve_add(Menu):
-    bl_idname = "TOPBAR_MT_edit_curve_add"
-    bl_label = "Add"
-    bl_translation_context = i18n_contexts.operator_default
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, context):
-        layout = self.layout
-
-        is_surf = context.active_object.type == 'SURFACE'
-
-        layout.operator_context = 'EXEC_REGION_WIN'
-
-        if is_surf:
-            VIEW3D_MT_surface_add.draw(self, context)
-        else:
-            VIEW3D_MT_curve_add.draw(self, context)
-
-
-class TOPBAR_MT_edit_armature_add(Menu):
-    bl_idname = "TOPBAR_MT_edit_armature_add"
-    bl_label = "Armature"
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, _context):
-        layout = self.layout
-
-        layout.operator_context = 'EXEC_REGION_WIN'
-
-
-class VIEW3D_MT_armature_add(Menu):
-    bl_idname = "VIEW3D_MT_armature_add"
-    bl_label = "Armature"
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, _context):
-        layout = self.layout
-
-        layout.operator_context = 'EXEC_REGION_WIN'
-        layout.operator("object.armature_add", text="Single Bone", icon='BONE_DATA')
-
-
-class VIEW3D_MT_volume_add(Menu):
-    bl_idname = "VIEW3D_MT_volume_add"
-    bl_label = "Volume"
-    bl_translation_context = i18n_contexts.id_id
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, _context):
-        layout = self.layout
-        layout.operator("object.volume_import", text="Import OpenVDB...", icon='OUTLINER_DATA_VOLUME')
-        layout.operator(
-            "object.volume_add", text="Empty",
-            text_ctxt=i18n_contexts.id_volume,
-            icon='OUTLINER_DATA_VOLUME',
-        )
-
-
-class VIEW3D_MT_grease_pencil_add(Menu):
-    bl_idname = "VIEW3D_MT_grease_pencil_add"
-    bl_label = "Grease Pencil"
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, _context):
-        layout = self.layout
-        layout.operator("object.grease_pencil_add", text="Blank", icon='EMPTY_AXIS').type = 'EMPTY'
-        layout.operator("object.grease_pencil_add", text="Stroke", icon='STROKE').type = 'STROKE'
-        layout.operator("object.grease_pencil_add", text="Monkey", icon='MONKEY').type = 'MONKEY'
-        layout.separator()
-        layout.operator("object.grease_pencil_add", text="Scene Line Art", icon='SCENE_DATA').type = 'LINEART_SCENE'
-        layout.operator(
-            "object.grease_pencil_add",
-            text="Collection Line Art",
-            icon='OUTLINER_COLLECTION',
-        ).type = 'LINEART_COLLECTION'
-        layout.operator("object.grease_pencil_add", text="Object Line Art", icon='OBJECT_DATA').type = 'LINEART_OBJECT'
-
-
-class VIEW3D_MT_lattice_add(Menu):
-    bl_idname = "VIEW3D_MT_lattice_add"
-    bl_label = "Lattice"
-    bl_translation_context = i18n_contexts.operator_default
-    bl_options = {'SEARCH_ON_KEY_PRESS'}
-
-    def draw(self, _context):
-        layout = self.layout
-        layout.operator_context = 'INVOKE_REGION_WIN'
-
-        layout.operator("object.add", text="Lattice", icon='OUTLINER_OB_LATTICE').type = 'LATTICE'
-        layout.operator("object.lattice_add_to_selected", text="Lattice Deform Selected", icon='OUTLINER_OB_LATTICE')
-
-
 class VIEW3D_MT_empty_add(Menu):
     bl_idname = "VIEW3D_MT_empty_add"
     bl_label = "Empty"
@@ -1494,46 +1329,16 @@ class VIEW3D_MT_add(Menu):
     bl_translation_context = i18n_contexts.operator_default
     bl_options = {'SEARCH_ON_KEY_PRESS'}
 
-    def draw(self, context):
+    def draw(self, _context):
         layout = self.layout
-
-
-        # NOTE: don't use 'EXEC_SCREEN' or operators won't get the `v3d` context.
-
-        # NOTE: was `EXEC_AREA`, but this context does not have the `rv3d`, which prevents
-        #       "align_view" to work on first call (see #32719).
         layout.operator_context = 'EXEC_REGION_WIN'
 
-        # layout.operator_menu_enum("object.mesh_add", "type", text="Mesh", icon='OUTLINER_OB_MESH')
         layout.menu("VIEW3D_MT_mesh_add", icon='OUTLINER_OB_MESH')
-
-        # layout.operator_menu_enum("object.curve_add", "type", text="Curve", icon='OUTLINER_OB_CURVE')
-        layout.menu("VIEW3D_MT_curve_add", icon='OUTLINER_OB_CURVE')
-        # layout.operator_menu_enum("object.surface_add", "type", text="Surface", icon='OUTLINER_OB_SURFACE')
-        layout.menu("VIEW3D_MT_surface_add", icon='OUTLINER_OB_SURFACE')
-        layout.menu("VIEW3D_MT_metaball_add", text="Metaball", icon='OUTLINER_OB_META')
-        layout.operator("object.text_add", text="Text", icon='OUTLINER_OB_FONT')
-        layout.operator("object.pointcloud_random_add", text="Point Cloud", icon='OUTLINER_OB_POINTCLOUD')
-        layout.menu("VIEW3D_MT_volume_add", text="Volume", text_ctxt=i18n_contexts.id_id, icon='OUTLINER_OB_VOLUME')
-        layout.menu("VIEW3D_MT_grease_pencil_add", text="Grease Pencil", icon='OUTLINER_OB_GREASEPENCIL')
-
-        layout.separator()
-
-        if VIEW3D_MT_armature_add.is_extended():
-            layout.menu("VIEW3D_MT_armature_add", icon='OUTLINER_OB_ARMATURE')
-        else:
-            layout.operator("object.armature_add", text="Armature", icon='OUTLINER_OB_ARMATURE')
-
-        layout.menu("VIEW3D_MT_lattice_add", icon='OUTLINER_OB_LATTICE')
 
         layout.separator()
 
         layout.menu("VIEW3D_MT_empty_add", icon='OUTLINER_OB_EMPTY')
         layout.menu("VIEW3D_MT_image_add", text="Image", icon='OUTLINER_OB_IMAGE')
-
-        layout.separator()
-
-        layout.operator_menu_enum("object.effector_add", "type", text="Force Field", icon='OUTLINER_OB_FORCE_FIELD')
 
         layout.separator()
 
@@ -5526,16 +5331,6 @@ classes = (
     VIEW3D_MT_edit_curves_select_more_less,
     VIEW3D_MT_select_edit_curves,
     VIEW3D_MT_mesh_add,
-    VIEW3D_MT_curve_add,
-    VIEW3D_MT_surface_add,
-    VIEW3D_MT_edit_metaball_context_menu,
-    VIEW3D_MT_metaball_add,
-    TOPBAR_MT_edit_curve_add,
-    TOPBAR_MT_edit_armature_add,
-    VIEW3D_MT_armature_add,
-    VIEW3D_MT_volume_add,
-    VIEW3D_MT_grease_pencil_add,
-    VIEW3D_MT_lattice_add,
     VIEW3D_MT_empty_add,
     VIEW3D_MT_add,
     VIEW3D_MT_image_add,

@@ -752,90 +752,10 @@ void CONSTRAINT_OT_childof_clear_inverse(wmOperatorType *ot)
 /** \name Follow Path Constraint (Auto Animate Path Operator)
  * \{ */
 
-static wmOperatorStatus followpath_path_animate_exec(bContext *C, wmOperator *op)
+static wmOperatorStatus followpath_path_animate_exec(bContext * /*C*/, wmOperator *op)
 {
-  Main *bmain = CTX_data_main(C);
-  Object *ob = context_active_object(C);
-  bConstraint *con = edit_constraint_property_get(C, op, ob, CONSTRAINT_TYPE_FOLLOWPATH);
-  bFollowPathConstraint *data = (con) ? static_cast<bFollowPathConstraint *>(con->data) : nullptr;
-
-  bAction *act = nullptr;
-  FCurve *fcu = nullptr;
-  int sfra = RNA_int_get(op->ptr, "frame_start");
-  int len = RNA_int_get(op->ptr, "length");
-  float standardRange = 1.0;
-
-  /* nearly impossible sanity check */
-  if (data == nullptr) {
-    BKE_report(op->reports, RPT_ERROR, "Follow Path constraint not found");
-    return OPERATOR_CANCELLED;
-  }
-
-  /* add F-Curve as appropriate */
-  if (data->tar) {
-    Curve *cu = id_cast<Curve *>(data->tar->data);
-
-    if (ELEM(nullptr, cu->adt, cu->adt->action) ||
-        (animrig::fcurve_find_in_assigned_slot(*cu->adt, {"eval_time", 0}) == nullptr))
-    {
-      /* create F-Curve for path animation */
-      act = animrig::id_action_ensure(bmain, &cu->id);
-      PointerRNA id_ptr = RNA_id_pointer_create(&cu->id);
-      fcu = animrig::action_fcurve_ensure_ex(bmain, act, &id_ptr, {"eval_time", 0});
-
-      /* standard vertical range - 1:1 = 100 frames */
-      standardRange = 100.0f;
-    }
-    else {
-      /* path anim exists already - abort for now as this may well be what was intended */
-      BKE_report(op->reports, RPT_WARNING, "Path is already animated");
-      return OPERATOR_CANCELLED;
-    }
-  }
-  else {
-    /* animate constraint's "fixed offset" */
-    PropertyRNA *prop;
-
-    /* get RNA pointer to constraint's "offset_factor" property - to build RNA path */
-    PointerRNA ptr = RNA_pointer_create_discrete(&ob->id, RNA_FollowPathConstraint, con);
-    prop = RNA_struct_find_property(&ptr, "offset_factor");
-
-    const std::optional<std::string> path = RNA_path_from_ID_to_property(&ptr, prop);
-    BLI_assert(path.has_value());
-
-    /* create F-Curve for constraint */
-    act = animrig::id_action_ensure(bmain, &ob->id);
-    PointerRNA id_ptr = RNA_id_pointer_create(&ob->id);
-    fcu = animrig::action_fcurve_ensure_ex(bmain, act, &id_ptr, {path->c_str(), 0});
-
-    /* standard vertical range - 0.0 to 1.0 */
-    standardRange = 1.0f;
-
-    /* enable "Use Fixed Position" so that animating this has effect */
-    data->followflag |= FOLLOWPATH_STATIC;
-  }
-
-  /* setup dummy 'generator' modifier here to get 1-1 correspondence still working
-   * and define basic slope of this curve based on the properties
-   */
-  if (!fcu->bezt && !fcu->fpt && !fcu->modifiers.first_) {
-    FModifier *fcm = add_fmodifier(&fcu->modifiers, FMODIFIER_TYPE_GENERATOR, fcu);
-    FMod_Generator *gen = static_cast<FMod_Generator *>(fcm->data);
-
-    /* Assume that we have the following equation:
-     *     y = Ax + B
-     *         1    0       <-- coefficients array indices
-     */
-    float A = standardRange / float(len);
-    float B = float(-sfra) * A;
-
-    gen->coefficients[1] = A;
-    gen->coefficients[0] = B;
-  }
-
-  /* updates... */
-  WM_event_add_notifier(C, NC_OBJECT | ND_CONSTRAINT, ob);
-  return OPERATOR_FINISHED;
+  BKE_report(op->reports, RPT_ERROR, "Follow Path animation is disabled in mesh-only build");
+  return OPERATOR_CANCELLED;
 }
 
 static wmOperatorStatus followpath_path_animate_invoke(bContext *C,
@@ -1049,65 +969,27 @@ void constraint_active_set(Object *ob, bConstraint *con)
 
 void constraint_update(Main *bmain, Object *ob)
 {
-  if (ob->pose) {
-    BKE_pose_update_constraint_flags(*ob);
-  }
-
   object_test_constraints(bmain, ob);
-
-  if (ob->type == OB_ARMATURE) {
-    DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY | ID_RECALC_TRANSFORM);
-  }
-  else {
-    DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM);
-  }
-}
-
-static void object_pose_tag_update(Main *bmain, Object *ob)
-{
-  BKE_pose_tag_recalc(bmain, ob->pose); /* Checks & sort pose channels. */
+  DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM);
 }
 
 void constraint_dependency_update(Main *bmain, Object *ob)
 {
   constraint_update(bmain, ob);
-
-  if (ob->pose) {
-    object_pose_tag_update(bmain, ob);
-  }
   DEG_relations_tag_update(bmain);
 }
 
 void constraint_tag_update(Main *bmain, Object *ob, bConstraint *con)
 {
-  if (ob->pose) {
-    BKE_pose_tag_update_constraint_flags(ob->pose);
-  }
-
   if (con) {
     object_test_constraint(bmain, ob, con);
   }
-
-  if (ob->type == OB_ARMATURE) {
-    DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY | ID_RECALC_TRANSFORM);
-  }
-  else {
-    DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM);
-  }
-
-  /* Do Copy-on-Write tag here too, otherwise constraint
-   * influence/mute buttons in UI have no effect
-   */
-  DEG_id_tag_update(&ob->id, ID_RECALC_SYNC_TO_EVAL);
+  DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM | ID_RECALC_SYNC_TO_EVAL);
 }
 
 void constraint_dependency_tag_update(Main *bmain, Object *ob, bConstraint *con)
 {
   constraint_tag_update(bmain, ob, con);
-
-  if (ob->pose) {
-    object_pose_tag_update(bmain, ob);
-  }
   DEG_relations_tag_update(bmain);
 }
 
@@ -1149,13 +1031,11 @@ void constraint_copy_for_object(Main *bmain, Object *ob_dst, bConstraint *con)
   WM_main_add_notifier(NC_OBJECT | ND_CONSTRAINT | NA_ADDED, ob_dst);
 }
 
-void constraint_copy_for_pose(Main *bmain, Object *ob_dst, bPoseChannel *pchan, bConstraint *con)
+void constraint_copy_for_pose(Main * /*bmain*/,
+                              Object * /*ob_dst*/,
+                              bPoseChannel * /*pchan*/,
+                              bConstraint * /*con*/)
 {
-  bConstraint *copy_con = BKE_constraint_copy_for_pose(ob_dst, pchan, con);
-  copy_con->flag |= CONSTRAINT_OVERRIDE_LIBRARY_LOCAL;
-
-  constraint_dependency_tag_update(bmain, ob_dst, con);
-  WM_main_add_notifier(NC_OBJECT | ND_CONSTRAINT | NA_ADDED, ob_dst);
 }
 
 /** \} */
@@ -1254,15 +1134,8 @@ static wmOperatorStatus constraint_apply_exec(bContext *C, wmOperator *op)
   STRNCPY_UTF8(name, con->name);
   const bool is_first_constraint = con != constraints->first_;
 
-  /* Copy the constraint. */
-  bool success;
-  if (pchan) {
-    success = BKE_constraint_apply_and_remove_for_pose(
-        depsgraph, scene, constraints, ob, con, pchan);
-  }
-  else {
-    success = BKE_constraint_apply_and_remove_for_object(depsgraph, scene, constraints, ob, con);
-  }
+  const bool success = BKE_constraint_apply_and_remove_for_object(
+      depsgraph, scene, constraints, ob, con);
 
   if (!success) {
     /* Couldn't remove due to some invalid data. */
@@ -1272,17 +1145,11 @@ static wmOperatorStatus constraint_apply_exec(bContext *C, wmOperator *op)
   /* Update for any children that may get moved. */
   DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM);
 
-  /* Needed to set the flags on pose-bones correctly. */
   constraint_update(bmain, ob);
 
   DEG_relations_tag_update(bmain);
   WM_event_add_notifier(C, NC_OBJECT | ND_CONSTRAINT | NA_REMOVED, ob);
-  if (pchan) {
-    WM_event_add_notifier(C, NC_OBJECT | ND_POSE, ob);
-  }
-  else {
-    WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, ob);
-  }
+  WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, ob);
 
   if (RNA_boolean_get(op->ptr, "report")) {
     if (is_first_constraint) {
@@ -1350,14 +1217,7 @@ static wmOperatorStatus constraint_copy_exec(bContext *C, wmOperator *op)
   char name[MAX_NAME];
   STRNCPY_UTF8(name, con->name);
 
-  /* Copy the constraint. */
-  bConstraint *copy_con;
-  if (pchan) {
-    copy_con = BKE_constraint_copy_for_pose(ob, pchan, con);
-  }
-  else {
-    copy_con = BKE_constraint_copy_for_object(ob, con);
-  }
+  bConstraint *copy_con = BKE_constraint_copy_for_object(ob, con);
 
   if (!copy_con) {
     /* Couldn't remove due to some invalid data. */
@@ -1428,56 +1288,18 @@ static wmOperatorStatus constraint_copy_to_selected_exec(bContext *C, wmOperator
     return OPERATOR_CANCELLED;
   }
 
-  bPoseChannel *pchan;
-  constraint_list_from_constraint(obact, con, &pchan);
-
-  if (pchan) {
-    /* Don't do anything if bone doesn't exist or doesn't have any constraints. */
-    if (pchan->constraints.first_ == nullptr) {
-      BKE_report(op->reports, RPT_ERROR, "No constraints for copying");
-      return OPERATOR_CANCELLED;
+  /* Copy all constraints from active object to all selected objects. */
+  CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects) {
+    if (obact == ob) {
+      continue;
     }
 
-    Object *prev_ob = nullptr;
+    bConstraint *copy_con = BKE_constraint_copy_for_object(ob, con);
+    copy_con->flag |= CONSTRAINT_OVERRIDE_LIBRARY_LOCAL;
 
-    /* Copy all constraints from active pose-bone to all selected pose-bones. */
-    CTX_DATA_BEGIN_WITH_ID (C, bPoseChannel *, chan, selected_pose_bones, Object *, ob) {
-      /* If we're not handling the object we're copying from, copy all constraints over. */
-      if (pchan == chan) {
-        continue;
-      }
-
-      bConstraint *copy_con = BKE_constraint_copy_for_pose(ob, chan, con);
-      copy_con->flag |= CONSTRAINT_OVERRIDE_LIBRARY_LOCAL;
-
-      /* Update flags (need to add here, not just copy). */
-      chan->constflag |= pchan->constflag;
-
-      if (prev_ob == ob) {
-        continue;
-      }
-
-      BKE_pose_tag_recalc(bmain, ob->pose);
-      DEG_id_tag_update(id_cast<ID *>(ob), ID_RECALC_GEOMETRY);
-      prev_ob = ob;
-    }
-    CTX_DATA_END;
+    DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY | ID_RECALC_TRANSFORM);
   }
-  else {
-    /* Copy all constraints from active object to all selected objects. */
-    CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects) {
-      /* If we're not handling the object we're copying from, copy all constraints over. */
-      if (obact == ob) {
-        continue;
-      }
-
-      bConstraint *copy_con = BKE_constraint_copy_for_object(ob, con);
-      copy_con->flag |= CONSTRAINT_OVERRIDE_LIBRARY_LOCAL;
-
-      DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY | ID_RECALC_TRANSFORM);
-    }
-    CTX_DATA_END;
-  }
+  CTX_DATA_END;
 
   /* Force depsgraph to get recalculated since new relationships added. */
   DEG_relations_tag_update(bmain);

@@ -3866,7 +3866,6 @@ def km_edit_metaball(params):
         # Transform Actions.
         *_template_items_transform_actions(params, use_mirror=True),
 
-        ("object.metaball_add", {"type": 'A', "value": 'PRESS', "shift": True}, None),
         *_template_items_hide_reveal_actions("mball.hide_metaelems", "mball.reveal_metaelems"),
         ("mball.delete_metaelems", {"type": 'X', "value": 'PRESS'}, None),
         ("mball.delete_metaelems", {"type": 'DEL', "value": 'PRESS'}, None),
@@ -6414,23 +6413,11 @@ def generate_keymaps(params=None):
         km_animation_channels(params),
 
         # Modes.
-        # Annotations
-        km_annotate(params),
-        # Grease Pencil
-        km_grease_pencil_selection(params),
-        km_grease_pencil_edit_mode(params),
         # Object mode.
         km_object_mode(params),
         km_object_non_modal(params),
         # Object edit modes.
         km_edit_mesh(params),
-        km_edit_armature(params),
-        km_edit_metaball(params),
-        km_edit_lattice(params),
-        km_edit_font(params),
-        km_edit_curve_legacy(params),
-        km_edit_curves(params),
-        km_edit_pointcloud(params),
 
         # Modal maps.
         km_eyedropper_modal_map(params),
@@ -6455,9 +6442,6 @@ def generate_keymaps(params=None):
         km_view3d_zoom_modal(params),
         km_view3d_dolly_modal(params),
         km_view3d_location_scouting_capture_review_modal(params),
-        km_curve_pen_modal_map(params),
-        km_pen_tool_modal_map(params),
-        km_grease_pencil_interpolate_tool_modal_map(params),
 
         # Gizmos.
         km_generic_gizmo(params),
@@ -6471,13 +6455,7 @@ def generate_keymaps(params=None):
         km_popup_toolbar(params),
 
         # Tool System.
-        km_generic_tool_annotate(params),
-        km_generic_tool_annotate_line(params),
-        km_generic_tool_annotate_polygon(params),
-        km_generic_tool_annotate_eraser(params),
-
         km_3d_view_tool_cursor(params),
-        km_3d_view_tool_text_select(params),
         *(km_3d_view_tool_select(params, fallback=fallback) for fallback in (False, True)),
         *(km_3d_view_tool_select_box(params, fallback=fallback) for fallback in (False, True)),
         *(km_3d_view_tool_select_circle(params, fallback=fallback) for fallback in (False, True)),
@@ -6490,11 +6468,6 @@ def generate_keymaps(params=None):
         km_3d_view_tool_bend(params),
         km_3d_view_tool_measure(params),
         km_3d_view_tool_interactive_add(params),
-        km_3d_view_tool_edit_armature_roll(params),
-        km_3d_view_tool_edit_armature_bone_size(params),
-        km_3d_view_tool_edit_armature_bone_envelope(params),
-        km_3d_view_tool_edit_armature_extrude(params),
-        km_3d_view_tool_edit_armature_extrude_to_cursor(params),
         km_3d_view_tool_edit_mesh_extrude_region(params),
         km_3d_view_tool_edit_mesh_extrude_manifold(params),
         km_3d_view_tool_edit_mesh_extrude_along_normals(params),
@@ -6518,18 +6491,6 @@ def generate_keymaps(params=None):
         km_3d_view_tool_edit_mesh_to_sphere(params),
         km_3d_view_tool_edit_mesh_rip_region(params),
         km_3d_view_tool_edit_mesh_rip_edge(params),
-        km_3d_view_tool_edit_curve_draw(params),
-        km_3d_view_tool_edit_curve_pen(params),
-        km_3d_view_tool_edit_curve_radius(params),
-        km_3d_view_tool_edit_curve_tilt(params),
-        km_3d_view_tool_edit_curve_randomize(params),
-        km_3d_view_tool_edit_curve_extrude(params),
-        km_3d_view_tool_edit_curve_extrude_to_cursor(params),
-        km_3d_view_tool_edit_curves_draw(params),
-        km_3d_view_tool_edit_curves_pen(params),
-        km_3d_view_tool_edit_grease_pencil_texture_gradient(params),
-        km_3d_view_tool_edit_grease_pencil_pen(params),
-        km_3d_view_tool_edit_grease_pencil_interpolate(params),
     ]
 
 

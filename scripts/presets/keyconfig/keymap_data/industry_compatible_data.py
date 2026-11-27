@@ -2383,24 +2383,8 @@ def generate_keymaps_impl(params=None):
         km_animation_channels(params),
 
         # Modes.
-        km_face_mask(params),
-        km_weight_paint_vertex_selection(params),
-        km_pose(params),
         km_object_mode(params),
-        km_paint_curve(params),
-        km_curve(params),
-        km_vertex_paint(params),
-        km_weight_paint(params),
-        km_sculpt(params),
         km_mesh(params),
-        km_armature(params),
-        km_metaball(params),
-        km_lattice(params),
-        km_particle(params),
-        km_font(params),
-        km_curves(params),
-        km_sculpt_curves(params),
-        km_pointcloud(params),
         km_object_non_modal(params),
 
         # Modal maps.
