@@ -37,10 +37,8 @@
 #include "ply_data.hh"
 #include "ply_import.hh"
 
-#include "BKE_pointcloud.hh"
 #include "ply_import_buffer.hh"
 #include "ply_import_data.hh"
-#include "ply_import_gsplat.hh"
 #include "ply_import_mesh.hh"
 
 #include "CLG_log.h"
@@ -328,23 +326,9 @@ Mesh *import_mesh(const PLYImportParams &import_params)
   }
 }
 
-PointCloud *import_point_cloud(const PLYImportParams &import_params)
+PointCloud *import_point_cloud(const PLYImportParams & /*import_params*/)
 {
-  const std::string datablock_name = get_datablock_name(import_params.filepath);
-  try {
-    std::unique_ptr<PlyData> data = read_ply_to_data(import_params, datablock_name);
-    if (!data) {
-      return nullptr;
-    }
-    if (!is_data_gaussian_splat(*data)) {
-      return nullptr;
-    }
-    return convert_gsplat_ply_to_point_cloud(*data, import_params);
-  }
-  catch (const std::exception &ex) {
-    report_exception(import_params, datablock_name, ex);
-    return nullptr;
-  }
+  return nullptr;
 }
 
 bke::GeometrySet import_geometry_set(const PLYImportParams &import_params)
@@ -358,22 +342,12 @@ bke::GeometrySet import_geometry_set(const PLYImportParams &import_params)
 
     /* Free the geometry if an exception is thrown before the geometry set owns it. */
     Mesh *mesh = nullptr;
-    PointCloud *point_cloud = nullptr;
     BLI_SCOPED_DEFER([&]() {
       if (mesh) {
         BKE_id_free(nullptr, mesh);
       }
-      if (point_cloud) {
-        BKE_id_free(nullptr, point_cloud);
-      }
     });
 
-    if (is_data_gaussian_splat(*data)) {
-      point_cloud = convert_gsplat_ply_to_point_cloud(*data, import_params);
-      bke::GeometrySet geometry = bke::GeometrySet::from_pointcloud(point_cloud);
-      point_cloud = nullptr;
-      return geometry;
-    }
     mesh = convert_ply_to_mesh(*data, import_params);
     bke::GeometrySet geometry = bke::GeometrySet::from_mesh(mesh);
     mesh = nullptr;
@@ -404,41 +378,21 @@ static void importer_main_impl(Main *bmain,
     return;
   }
 
-  ObjectType ob_type = OB_EMPTY;
-  ID *ob_data = nullptr;
   Mesh *mesh = nullptr;
-  Mesh *mesh_in_main = nullptr;
-  PointCloud *point_cloud = nullptr;
   /* Free the geometry if an exception like std::bad_alloc is thrown before moving it to Main. */
   BLI_SCOPED_DEFER([&]() {
     if (mesh) {
       BKE_id_free(nullptr, mesh);
     }
-    if (point_cloud) {
-      BKE_id_free(nullptr, point_cloud);
-    }
   });
 
-  if (is_data_gaussian_splat(*data)) {
-    point_cloud = convert_gsplat_ply_to_point_cloud(*data, import_params);
-    if (!point_cloud) {
-      return;
-    }
-    PointCloud *point_cloud_in_main = BKE_pointcloud_add(bmain, datablock_name.c_str());
-    ob_type = OB_POINTCLOUD;
-    ob_data = id_cast<ID *>(point_cloud_in_main);
-    BKE_pointcloud_nomain_to_pointcloud(std::exchange(point_cloud, nullptr), point_cloud_in_main);
+  mesh = convert_ply_to_mesh(*data, import_params);
+  if (!mesh) {
+    return;
   }
-  else {
-    mesh = convert_ply_to_mesh(*data, import_params);
-    if (!mesh) {
-      return;
-    }
-    ob_type = OB_MESH;
-    mesh_in_main = BKE_mesh_add(bmain, datablock_name.c_str());
-    ob_data = id_cast<ID *>(mesh_in_main);
-    /* Delay conversion of mesh to mesh_in_main until the object is known. */
-  }
+  const ObjectType ob_type = OB_MESH;
+  Mesh *mesh_in_main = BKE_mesh_add(bmain, datablock_name.c_str());
+  ID *ob_data = id_cast<ID *>(mesh_in_main);
 
   BLI_assert(ob_data);
   BLI_assert(ob_type != OB_EMPTY);

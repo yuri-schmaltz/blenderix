@@ -89,7 +89,6 @@ void VIEW3D_OT_select_circle(wmOperatorType *ot);
 void VIEW3D_OT_select_box(wmOperatorType *ot);
 void VIEW3D_OT_select_lasso(wmOperatorType *ot);
 void VIEW3D_OT_select_menu(wmOperatorType *ot);
-void VIEW3D_OT_bone_select_menu(wmOperatorType *ot);
 
 /* `view3d_utils.cc` */
 

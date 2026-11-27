@@ -6,10 +6,7 @@
  * \ingroup spview3d
  */
 
-#include "DNA_armature_types.h"
-#include "DNA_meta_types.h"
 #include "DNA_object_types.h"
-#include "DNA_pointcloud_types.h"
 
 #include "BLI_bounds.hh"
 #include "BLI_listbase.hh"
@@ -21,18 +18,13 @@
 #include "BLI_utildefines.hh"
 #include "BLI_vector.hh"
 
-#include "BKE_action.hh"
-#include "BKE_armature.hh"
 #include "BKE_context.hh"
-#include "BKE_crazyspace.hh"
 #include "BKE_editmesh.hh"
 #include "BKE_layer.hh"
 #include "BKE_main.hh"
-#include "BKE_mball.hh"
 #include "BKE_object.hh"
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
-#include "BKE_tracking.hh"
 
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_query.hh"
@@ -43,20 +35,9 @@
 #include "RNA_access.hh"
 #include "RNA_define.hh"
 
-#include "ED_anim_api.hh"
-#include "ED_curves.hh"
-#include "ED_grease_pencil.hh"
-#include "ED_keyframing.hh"
 #include "ED_object.hh"
-#include "ED_pointcloud.hh"
 #include "ED_screen.hh"
 #include "ED_transverts.hh"
-
-#include "ANIM_action.hh"
-#include "ANIM_armature.hh"
-#include "ANIM_bone_collections.hh"
-#include "ANIM_keyframing.hh"
-#include "ANIM_keyingsets.hh"
 
 #include "view3d_intern.hh"
 
@@ -131,57 +112,10 @@ static wmOperatorStatus snap_sel_to_grid_exec(bContext *C, wmOperator *op)
       ED_transverts_free(&tvs);
     }
   }
-  else if (OBPOSE_FROM_OBACT(obact)) {
-    KeyingSet *ks = animrig::get_keyingset_for_autokeying(scene, ANIM_KS_LOCATION_ID);
-    Vector<Object *> objects_eval = BKE_object_pose_array_get(*bmain, scene, view_layer_eval, v3d);
-    for (Object *ob_eval : objects_eval) {
-      Object *ob = DEG_get_original(ob_eval);
-      bArmature *arm_eval = id_cast<bArmature *>(ob_eval->data);
-
-      invert_m4_m4(ob_eval->runtime->world_to_object.ptr(), ob_eval->object_to_world().ptr());
-
-      for (bPoseChannel &pchan_eval : ob_eval->pose->chanbase) {
-        if (pchan_eval.flag & POSE_SELECTED) {
-          if (ANIM_bonecoll_is_visible_pchan(arm_eval, &pchan_eval)) {
-            const Bone *bone_eval = pchan_eval.bone_get(*ob_eval);
-            if ((bone_eval->flag & BONE_CONNECTED) == 0) {
-              float nLoc[3];
-
-              /* get nearest grid point to snap to */
-              copy_v3_v3(nLoc, pchan_eval.pose_mat[3]);
-              /* We must operate in world space! */
-              mul_m4_v3(ob_eval->object_to_world().ptr(), nLoc);
-              vec[0] = gridf * floorf(0.5f + nLoc[0] / gridf);
-              vec[1] = gridf * floorf(0.5f + nLoc[1] / gridf);
-              vec[2] = gridf * floorf(0.5f + nLoc[2] / gridf);
-              /* Back in object space... */
-              mul_m4_v3(ob_eval->world_to_object().ptr(), vec);
-
-              /* Get location of grid point in pose space. */
-              BKE_armature_loc_pose_to_bone({&pchan_eval, bone_eval}, vec, vec);
-
-              /* Adjust location on the original pchan. */
-              bPoseChannel *pchan = BKE_pose_channel_find_name(ob->pose, pchan_eval.name);
-              BKE_pchan_protected_location_set(pchan, vec);
-
-              /* auto-keyframing */
-              animrig::autokeyframe_pchan(C, scene, ob, pchan, ks);
-            }
-            /* if the bone has a parent and is connected to the parent,
-             * don't do anything - will break chain unless we do auto-ik.
-             */
-          }
-        }
-      }
-
-      DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
-    }
-  }
   else {
     /* Object mode. */
-    Main *bmain = CTX_data_main(C);
-
-    KeyingSet *ks = animrig::get_keyingset_for_autokeying(scene, ANIM_KS_LOCATION_ID);
+    Main *bmain_mut = CTX_data_main(C);
+    UNUSED_VARS(bmain);
 
     const bool use_transform_skip_children = (scene->toolsettings->transform_flag &
                                               SCE_XFORM_SKIP_CHILDREN);
@@ -208,18 +142,14 @@ static wmOperatorStatus snap_sel_to_grid_exec(bContext *C, wmOperator *op)
       for (Object *ob_eval : objects_eval) {
         objects.append_unchecked(DEG_get_original(ob_eval));
       }
-      BKE_scene_graph_evaluated_ensure(depsgraph, bmain);
+      BKE_scene_graph_evaluated_ensure(depsgraph, bmain_mut);
       xcs = object::xform_skip_child_container_create();
       object::xform_skip_child_container_item_ensure_from_array(
-          xcs, *bmain, scene, view_layer, objects.data(), objects.size());
+          xcs, *bmain_mut, scene, view_layer, objects.data(), objects.size());
     }
     if (use_transform_data_origin) {
-      BKE_scene_graph_evaluated_ensure(depsgraph, bmain);
+      BKE_scene_graph_evaluated_ensure(depsgraph, bmain_mut);
       xds = object::data_xform_container_create();
-    }
-
-    if (animrig::is_autokey_on(scene)) {
-      ANIM_deselect_keys_in_animation_editors(C);
     }
 
     for (Object *ob_eval : objects_eval) {
@@ -242,9 +172,6 @@ static wmOperatorStatus snap_sel_to_grid_exec(bContext *C, wmOperator *op)
       const float3 loc_final = float3(ob_eval->loc) + float3(vec);
       BKE_object_protected_location_set(ob, loc_final);
 
-      /* auto-keyframing */
-      animrig::autokeyframe_object(C, scene, ob, ks);
-
       if (use_transform_data_origin) {
         object::data_xform_container_item_ensure(xds, ob);
       }
@@ -253,11 +180,11 @@ static wmOperatorStatus snap_sel_to_grid_exec(bContext *C, wmOperator *op)
     }
 
     if (use_transform_skip_children) {
-      object::object_xform_skip_child_container_update_all(xcs, bmain, depsgraph);
+      object::object_xform_skip_child_container_update_all(xcs, bmain_mut, depsgraph);
       object::object_xform_skip_child_container_destroy(xcs);
     }
     if (use_transform_data_origin) {
-      object::data_xform_container_update_all(xds, bmain, depsgraph);
+      object::data_xform_container_update_all(xds, bmain_mut, depsgraph);
       object::data_xform_container_destroy(xds);
     }
   }
@@ -287,18 +214,6 @@ void VIEW3D_OT_snap_selected_to_grid(wmOperatorType *ot)
 /* -------------------------------------------------------------------- */
 /** \name Snap Selection to Location (Utility)
  * \{ */
-
-/* Return true if the bone or any of its parents has the given runtime flag set. */
-static bool pose_bone_runtime_flag_test_recursive(const bPoseChannel *pose_bone, int flag)
-{
-  if (pose_bone->runtime.flag & flag) {
-    return true;
-  }
-  if (pose_bone->parent) {
-    return pose_bone_runtime_flag_test_recursive(pose_bone->parent, flag);
-  }
-  return false;
-}
 
 /**
  * Snaps the selection as a whole (use_offset=true) or each selected object to the given location.
@@ -405,125 +320,8 @@ static bool snap_selected_to_location_rotation(bContext *C,
       ED_transverts_free(&tvs);
     }
   }
-  else if (OBPOSE_FROM_OBACT(obact)) {
-    KeyingSet *ks = animrig::get_keyingset_for_autokeying(scene, ANIM_KS_LOCATION_ID);
-    Main *bmain = CTX_data_main(C);
-    ViewLayer *view_layer = CTX_data_view_layer(C);
-    Vector<Object *> objects = BKE_object_pose_array_get(*bmain, scene, view_layer, v3d);
-    Depsgraph *depsgraph = CTX_data_depsgraph_pointer(C);
-    BKE_scene_graph_evaluated_ensure(depsgraph, bmain);
-
-    for (Object *ob : objects) {
-      bArmature *arm = id_cast<bArmature *>(ob->data);
-      float3 target_loc_local;
-
-      invert_m4_m4(ob->runtime->world_to_object.ptr(), ob->object_to_world().ptr());
-      mul_v3_m4v3(target_loc_local, ob->world_to_object().ptr(), target_loc_global);
-
-      for (bPoseChannel &pchan : ob->pose->chanbase) {
-        const Bone *bone = pchan.bone_get(*ob);
-        if ((pchan.flag & POSE_SELECTED) && animrig::bone_is_visible(arm, {&pchan, bone}) &&
-            /* if the bone has a parent and is connected to the parent,
-             * don't do anything - will break chain unless we do auto-ik.
-             */
-            (bone->flag & BONE_CONNECTED) == 0)
-        {
-          pchan.runtime.flag |= POSE_RUNTIME_TRANSFORM;
-        }
-        else {
-          pchan.runtime.flag &= ~POSE_RUNTIME_TRANSFORM;
-        }
-      }
-
-      for (bPoseChannel &pchan : ob->pose->chanbase) {
-        if ((pchan.runtime.flag & POSE_RUNTIME_TRANSFORM) &&
-            /* check that our parents not transformed (if we have one) */
-            ((pchan.parent &&
-              pose_bone_runtime_flag_test_recursive(pchan.parent, POSE_RUNTIME_TRANSFORM)) == 0))
-        {
-          /* Get position in pchan (pose) space. */
-          float3 target_loc_pose;
-
-          Bone *bone = pchan.bone_get(*ob);
-          if (use_offset) {
-            mul_v3_m4v3(target_loc_pose, ob->object_to_world().ptr(), pchan.pose_mat[3]);
-            add_v3_v3(target_loc_pose, offset_global);
-
-            if (use_rotation) {
-              sub_v3_v3(target_loc_pose, target_loc_global);
-              mul_m3_v3(target_rot_global.ptr(), target_loc_pose);
-              add_v3_v3(target_loc_pose, target_loc_global);
-            }
-
-            mul_m4_v3(ob->world_to_object().ptr(), target_loc_pose);
-            BKE_armature_loc_pose_to_bone({&pchan, bone}, target_loc_pose, target_loc_pose);
-          }
-          else {
-            BKE_armature_loc_pose_to_bone({&pchan, bone}, target_loc_local, target_loc_pose);
-          }
-
-          if (use_rotation) {
-            BKE_pchan_mat3_to_rot(&pchan, target_rot_global.ptr(), false);
-
-            if (pchan.rotmode == ROT_MODE_QUAT) {
-              float quat[4];
-              mat3_normalized_to_quat(quat, target_rot_global.ptr());
-
-              if (use_toolsettings) {
-                BKE_pchan_protected_rotation_quaternion_set(&pchan, quat);
-              }
-              else {
-                copy_v4_v4(pchan.quat, quat);
-              }
-            }
-            else if (pchan.rotmode == ROT_MODE_AXISANGLE) {
-              float rot_axis[3];
-              float rot_angle;
-              mat3_to_axis_angle(rot_axis, &rot_angle, target_rot_global.ptr());
-
-              if (use_toolsettings) {
-                BKE_pchan_protected_rotation_axisangle_set(&pchan, rot_axis, rot_angle);
-              }
-              else {
-                copy_v3_v3(pchan.rotAxis, rot_axis);
-                pchan.rotAngle = rot_angle;
-              }
-            }
-            else {
-              float rot_euler[3];
-              mat3_to_eulO(rot_euler, pchan.rotmode, target_rot_global.ptr());
-
-              if (use_toolsettings) {
-                BKE_pchan_protected_rotation_euler_set(&pchan, rot_euler);
-              }
-              else {
-                copy_v3_v3(pchan.eul, rot_euler);
-              }
-            }
-          }
-
-          /* copy new position */
-          if (use_toolsettings) {
-            BKE_pchan_protected_location_set(&pchan, target_loc_pose);
-
-            /* auto-keyframing */
-            animrig::autokeyframe_pchan(C, scene, ob, &pchan, ks);
-          }
-          else {
-            copy_v3_v3(pchan.loc, target_loc_pose);
-          }
-        }
-      }
-
-      for (bPoseChannel &pchan : ob->pose->chanbase) {
-        pchan.runtime.flag &= ~POSE_RUNTIME_TRANSFORM;
-      }
-
-      DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
-    }
-  }
   else {
-    KeyingSet *ks = animrig::get_keyingset_for_autokeying(scene, ANIM_KS_LOCATION_ID);
+    UNUSED_VARS(obact);
     Main *bmain = CTX_data_main(C);
     Depsgraph *depsgraph = CTX_data_depsgraph_pointer(C);
     BKE_scene_graph_evaluated_ensure(depsgraph, bmain);
@@ -566,10 +364,6 @@ static bool snap_selected_to_location_rotation(bContext *C,
       for (Object *ob : objects) {
         object::data_xform_container_item_ensure(xds, ob);
       }
-    }
-
-    if (animrig::is_autokey_on(scene)) {
-      ANIM_deselect_keys_in_animation_editors(C);
     }
 
     for (Object *ob : objects) {
@@ -615,9 +409,6 @@ static bool snap_selected_to_location_rotation(bContext *C,
       if (use_toolsettings) {
         const float3 loc_final = float3(ob->loc) + target_loc_local;
         BKE_object_protected_location_set(ob, loc_final);
-
-        /* auto-keyframing */
-        animrig::autokeyframe_object(C, scene, ob, ks);
       }
       else {
         add_v3_v3(ob->loc, target_loc_local);
@@ -676,9 +467,6 @@ static bool snap_selected_to_location_rotation(bContext *C,
             copy_v3_v3(ob->rot, rot_euler);
           }
         }
-
-        /* auto-keyframing */
-        animrig::autokeyframe_object(C, scene, ob, ks);
       }
 
       DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM);
@@ -851,58 +639,6 @@ void VIEW3D_OT_snap_cursor_to_grid(wmOperatorType *ot)
 /** \name Snap Cursor to Selection Operator
  * \{ */
 
-/**
- * Returns the center position of a tracking marker visible on the viewport
- * (useful to snap to).
- */
-static void bundle_midpoint(Scene *scene, Object *ob, float r_vec[3])
-{
-  MovieClip *clip = BKE_object_movieclip_get(scene, ob, false);
-  bool ok = false;
-  float min[3], max[3], mat[4][4], pos[3], cammat[4][4];
-
-  if (!clip) {
-    return;
-  }
-
-  MovieTracking *tracking = &clip->tracking;
-
-  copy_m4_m4(cammat, ob->object_to_world().ptr());
-
-  BKE_tracking_get_camera_object_matrix(ob, mat);
-
-  INIT_MINMAX(min, max);
-
-  for (MovieTrackingObject &tracking_object : tracking->objects) {
-    float obmat[4][4];
-
-    if (tracking_object.flag & TRACKING_OBJECT_CAMERA) {
-      copy_m4_m4(obmat, mat);
-    }
-    else {
-      float imat[4][4];
-
-      BKE_tracking_camera_get_reconstructed_interpolate(
-          tracking, &tracking_object, scene->r.cfra, imat);
-      invert_m4(imat);
-
-      mul_m4_m4m4(obmat, cammat, imat);
-    }
-
-    for (const MovieTrackingTrack &track : tracking_object.tracks) {
-      if ((track.flag & TRACK_HAS_BUNDLE) && TRACK_SELECTED(&track)) {
-        ok = true;
-        mul_v3_m4v3(pos, obmat, track.bundle_pos);
-        minmax_v3v3_v3(min, max, pos);
-      }
-    }
-  }
-
-  if (ok) {
-    mid_v3_v3v3(r_vec, min, max);
-  }
-}
-
 /** Snaps the 3D cursor location to the median point of the selection. */
 static bool snap_curs_to_sel_ex(bContext *C, const int pivot_point, float r_cursor[3])
 {
@@ -958,41 +694,13 @@ static bool snap_curs_to_sel_ex(bContext *C, const int pivot_point, float r_curs
     }
   }
   else {
-    Object *obact = CTX_data_active_object(C);
-
-    if (obact && (obact->mode & OB_MODE_POSE)) {
-      Object *obact_eval = DEG_get_evaluated(depsgraph, obact);
-      bArmature *arm = id_cast<bArmature *>(obact_eval->data);
-      for (bPoseChannel &pchan : obact_eval->pose->chanbase) {
-        if (ANIM_bonecoll_is_visible_pchan(arm, &pchan)) {
-          if (pchan.flag & POSE_SELECTED) {
-            copy_v3_v3(vec, pchan.pose_head);
-            mul_m4_v3(obact_eval->object_to_world().ptr(), vec);
-            centroid += double3(vec);
-            minmax_v3v3_v3(min, max, vec);
-            count++;
-          }
-        }
-      }
+    FOREACH_SELECTED_OBJECT_BEGIN (view_layer_eval, v3d, ob_eval) {
+      copy_v3_v3(vec, ob_eval->object_to_world().location());
+      centroid += double3(vec);
+      minmax_v3v3_v3(min, max, vec);
+      count++;
     }
-    else {
-      FOREACH_SELECTED_OBJECT_BEGIN (view_layer_eval, v3d, ob_eval) {
-        copy_v3_v3(vec, ob_eval->object_to_world().location());
-
-        /* special case for camera -- snap to bundles */
-        if (ob_eval->type == OB_CAMERA) {
-          /* snap to bundles should happen only when bundles are visible */
-          if (v3d->flag2 & V3D_SHOW_RECONSTRUCTION) {
-            bundle_midpoint(scene, DEG_get_original(ob_eval), vec);
-          }
-        }
-
-        centroid += double3(vec);
-        minmax_v3v3_v3(min, max, vec);
-        count++;
-      }
-      FOREACH_SELECTED_OBJECT_END;
-    }
+    FOREACH_SELECTED_OBJECT_END;
   }
 
   if (count == 0) {
@@ -1126,126 +834,11 @@ void VIEW3D_OT_snap_cursor_to_center(wmOperatorType *ot)
 /** \name Min/Max Object Vertices Utility
  * \{ */
 
-static std::optional<Bounds<float3>> bounds_min_max_with_transform(const float4x4 &transform,
-                                                                   const Span<float3> positions,
-                                                                   const IndexMask &mask)
+bool ED_view3d_minmax_verts(const Scene * /*scene*/, Object *obedit, float r_min[3], float r_max[3])
 {
-  if (mask.is_empty()) {
-    return std::nullopt;
-  }
-  return threading::parallel_reduce(
-      mask.index_range(),
-      1024,
-      Bounds<float3>(math::transform_point(transform, positions[mask.first()])),
-      [&](const IndexRange range, Bounds<float3> init) {
-        mask.slice(range).foreach_index_optimized<int>([&](const int i) {
-          math::min_max(math::transform_point(transform, positions[i]), init.min, init.max);
-        });
-        return init;
-      },
-      [](const Bounds<float3> &a, const Bounds<float3> &b) { return bounds::merge(a, b); });
-}
-
-bool ED_view3d_minmax_verts(const Scene *scene, Object *obedit, float r_min[3], float r_max[3])
-{
-  using namespace blender::ed;
   TransVertStore tvs = {nullptr};
   TransVert *tv;
   float centroid[3], vec[3], bmat[3][3];
-
-  /* Meta-balls are an exception. */
-  if (obedit->type == OB_MBALL) {
-    float ob_min[3], ob_max[3];
-    bool changed;
-
-    changed = BKE_mball_minmax_ex(id_cast<const MetaBall *>(obedit->data),
-                                  ob_min,
-                                  ob_max,
-                                  obedit->object_to_world().ptr(),
-                                  SELECT);
-    if (changed) {
-      minmax_v3v3_v3(r_min, r_max, ob_min);
-      minmax_v3v3_v3(r_min, r_max, ob_max);
-    }
-    return changed;
-  }
-  if (obedit->type == OB_POINTCLOUD) {
-    const Object &ob_orig = *DEG_get_original(obedit);
-    const PointCloud &pointcloud = *id_cast<const PointCloud *>(ob_orig.data);
-
-    IndexMaskMemory memory;
-    const IndexMask mask = pointcloud::retrieve_selected_points(pointcloud, memory);
-
-    const std::optional<Bounds<float3>> bounds = bounds_min_max_with_transform(
-        obedit->object_to_world(), pointcloud.positions(), mask);
-
-    if (bounds) {
-      minmax_v3v3_v3(r_min, r_max, bounds->min);
-      minmax_v3v3_v3(r_min, r_max, bounds->max);
-      return true;
-    }
-    return false;
-  }
-  if (obedit->type == OB_CURVES) {
-    const Object &ob_orig = *DEG_get_original(obedit);
-    const Curves &curves_id = *id_cast<const Curves *>(ob_orig.data);
-    const bke::CurvesGeometry &curves = curves_id.geometry.wrap();
-
-    IndexMaskMemory memory;
-    const IndexMask mask = curves::retrieve_selected_points(curves, memory);
-
-    const bke::crazyspace::GeometryDeformation deformation =
-        bke::crazyspace::get_evaluated_curves_deformation(obedit, ob_orig);
-
-    const std::optional<Bounds<float3>> bounds = bounds_min_max_with_transform(
-        obedit->object_to_world(), deformation.positions, mask);
-
-    if (bounds) {
-      minmax_v3v3_v3(r_min, r_max, bounds->min);
-      minmax_v3v3_v3(r_min, r_max, bounds->max);
-      return true;
-    }
-    return false;
-  }
-  if (obedit->type == OB_GREASE_PENCIL) {
-    Object &ob_orig = *DEG_get_original(obedit);
-    GreasePencil &grease_pencil = *id_cast<GreasePencil *>(ob_orig.data);
-
-    std::optional<Bounds<float3>> bounds = std::nullopt;
-
-    const Vector<greasepencil::MutableDrawingInfo> drawings =
-        greasepencil::retrieve_editable_drawings(*scene, grease_pencil);
-    for (const greasepencil::MutableDrawingInfo info : drawings) {
-      const bke::CurvesGeometry &curves = info.drawing.strokes();
-      if (curves.is_empty()) {
-        continue;
-      }
-
-      IndexMaskMemory memory;
-      const IndexMask points = greasepencil::retrieve_editable_and_selected_points(
-          ob_orig, info.drawing, info.layer_index, memory);
-      if (points.is_empty()) {
-        continue;
-      }
-
-      const bke::crazyspace::GeometryDeformation deformation =
-          bke::crazyspace::get_evaluated_grease_pencil_drawing_deformation(
-              obedit, ob_orig, info.drawing);
-
-      const bke::greasepencil::Layer &layer = grease_pencil.layer(info.layer_index);
-      const float4x4 layer_to_world = layer.to_world_space(*obedit);
-
-      bounds = bounds::merge(
-          bounds, bounds_min_max_with_transform(layer_to_world, deformation.positions, points));
-    }
-
-    if (bounds) {
-      minmax_v3v3_v3(r_min, r_max, bounds->min);
-      minmax_v3v3_v3(r_min, r_max, bounds->max);
-      return true;
-    }
-    return false;
-  }
 
   if (ED_transverts_check_obedit(obedit)) {
     ED_transverts_create_from_obedit(&tvs, obedit, TM_ALL_JOINTS | TM_CALC_MAPLOC);

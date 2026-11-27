@@ -75,40 +75,13 @@ static void update_depsgraph(ModifierData *md, const ModifierUpdateDepsgraphCont
 }
 
 /* A vertex will be in the mask if a selected bone influences it more than a certain threshold. */
-static void compute_vertex_mask__armature_mode(const MDeformVert *dvert,
-                                               Mesh *mesh,
-                                               Object *armature_ob,
-                                               float threshold,
+static void compute_vertex_mask__armature_mode(const MDeformVert * /*dvert*/,
+                                               Mesh * /*mesh*/,
+                                               Object * /*armature_ob*/,
+                                               float /*threshold*/,
                                                MutableSpan<bool> r_vertex_mask)
 {
-  /* Element i is true if there is a selected bone that uses vertex group i. */
-  Vector<bool> selected_bone_uses_group;
-
-  for (bDeformGroup &def : mesh->vertex_group_names) {
-    bPoseChannel *pchan = BKE_pose_channel_find_name(armature_ob->pose, def.name);
-    const bool bone_for_group_exists = pchan && pchan->bone_get(*armature_ob) &&
-                                       (pchan->flag & POSE_SELECTED);
-    selected_bone_uses_group.append(bone_for_group_exists);
-  }
-  const int64_t total_size = selected_bone_uses_group.size();
-
-  for (int i : r_vertex_mask.index_range()) {
-    Span<MDeformWeight> weights(dvert[i].dw, dvert[i].totweight);
-    r_vertex_mask[i] = false;
-
-    /* check the groups that vertex is assigned to, and see if it was any use */
-    for (const MDeformWeight &dw : weights) {
-      if (dw.def_nr >= total_size) {
-        continue;
-      }
-      if (selected_bone_uses_group[dw.def_nr]) {
-        if (dw.weight > threshold) {
-          r_vertex_mask[i] = true;
-          break;
-        }
-      }
-    }
-  }
+  r_vertex_mask.fill(false);
 }
 
 /* A vertex will be in the mask if the vertex group influences it more than a certain threshold. */

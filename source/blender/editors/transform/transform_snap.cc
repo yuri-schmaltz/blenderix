@@ -28,15 +28,10 @@
 
 #include "WM_api.hh"
 
-#include "ED_image.hh"
-#include "ED_node.hh"
 #include "ED_transform_snap_object_context.hh"
-#include "ED_uvedit.hh"
 
 #include "UI_resources.hh"
 #include "UI_view2d.hh"
-
-#include "SEQ_sequencer.hh"
 
 #include "transform.hh"
 #include "transform_constraints.hh"
@@ -55,9 +50,6 @@ namespace blender::ed::transform {
 static void setSnappingCallback(TransInfo *t);
 
 static void snap_target_view3d_fn(TransInfo *t, float *vec);
-static void snap_target_uv_fn(TransInfo *t, float *vec);
-static void snap_target_sequencer_fn(TransInfo *t, float *vec);
-static void snap_target_nla_fn(TransInfo *t, float *vec);
 
 static void snap_source_median_fn(TransInfo *t);
 static void snap_source_center_fn(TransInfo *t);
@@ -296,91 +288,6 @@ void drawSnapping(TransInfo *t)
     }
 
     GPU_depth_test(GPU_DEPTH_LESS_EQUAL);
-  }
-  else if (t->spacetype == SPACE_IMAGE) {
-    uint pos = GPU_vertformat_attr_add(immVertexFormat(), "pos", gpu::VertAttrType::SFLOAT_32_32);
-
-    GPU_matrix_push_projection();
-    wmOrtho2_region_pixelspace(t->region);
-    float radius = 2.5f * ui::theme::get_value_f(TH_VERTEX_SIZE) * U.pixelsize;
-    GPU_blend(GPU_BLEND_ALPHA);
-
-    if (!t->tsnap.points.is_empty()) {
-      immBindBuiltinProgram(GPU_SHADER_3D_UNIFORM_COLOR);
-      for (TransSnapPoint &p : t->tsnap.points) {
-        if (&p == t->tsnap.selectedPoint) {
-          immUniformColor4ubv(selectedCol);
-        }
-        else {
-          immUniformColor4ubv(col);
-        }
-        float x, y;
-        const float2 snap_point = float2(p.co) / float2(t->aspect);
-        ui::view2d_view_to_region_fl(&t->region->v2d, snap_point.x, snap_point.y, &x, &y);
-        imm_draw_circle_wire_2d(pos, x, y, radius, 8);
-      }
-      immUnbindProgram();
-    }
-
-    float x, y;
-    const float snap_point[2] = {
-        t->tsnap.snap_target[0] / t->aspect[0],
-        t->tsnap.snap_target[1] / t->aspect[1],
-    };
-    ui::view2d_view_to_region_fl(&t->region->v2d, UNPACK2(snap_point), &x, &y);
-
-    immBindBuiltinProgram(GPU_SHADER_3D_UNIFORM_COLOR);
-    immUniformColor3ub(255, 255, 255);
-    imm_draw_circle_wire_2d(pos, x, y, radius, 8);
-    immUnbindProgram();
-
-    GPU_blend(GPU_BLEND_NONE);
-    GPU_matrix_pop_projection();
-  }
-  else if (t->spacetype == SPACE_SEQ) {
-    const ARegion *region = t->region;
-    GPU_blend(GPU_BLEND_ALPHA);
-    uint pos = GPU_vertformat_attr_add(immVertexFormat(), "pos", gpu::VertAttrType::SFLOAT_32_32);
-    immBindBuiltinProgram(GPU_SHADER_3D_UNIFORM_COLOR);
-    float pixelx = ui::view2d_pixel_size_get_x(&region->v2d);
-
-    const float target_x = t->tsnap.snap_target[0];
-    const float target_y = t->tsnap.snap_target[1];
-
-    auto draw_vline = [&](float ymin, float ymax, uchar alpha) {
-      immUniformColor4ub(col[0], col[1], col[2], alpha);
-      immRectf(pos, target_x - pixelx, ymin, target_x + pixelx, ymax);
-    };
-
-    auto draw_hline = [&](float xmin, float xmax, uchar alpha) {
-      immUniformColor4ub(col[0], col[1], col[2], alpha);
-      immRectf(pos, xmin, target_y - pixelx, xmax, target_y + pixelx);
-    };
-
-    if (region->regiontype == RGN_TYPE_PREVIEW) {
-      if (t->tsnap.direction & DIR_GLOBAL_X) {
-        draw_vline(region->v2d.cur.ymin, region->v2d.cur.ymax, col[3]);
-      }
-      if (t->tsnap.direction & DIR_GLOBAL_Y) {
-        draw_hline(region->v2d.cur.xmin, region->v2d.cur.xmax, col[3]);
-      }
-    }
-    else {
-      const short snap_flag = seq::tool_settings_snap_flag_get(t->scene);
-      if ((snap_flag & SEQ_SNAP_TO_ALL_CHANNEL_STRIPS) || target_y == 0) {
-        draw_vline(region->v2d.cur.ymin, region->v2d.cur.ymax, col[3]);
-      }
-      else {
-        /* Extend fully opaque line a half-channel below,
-         * through current channel, and a half-channel above. */
-        draw_vline(target_y - 0.5, target_y + 1.5, col[3]);
-        /* Draw more transparent line from top to bottom. */
-        draw_vline(region->v2d.cur.ymin, region->v2d.cur.ymax, col[3] / 8);
-      }
-    }
-
-    immUnbindProgram();
-    GPU_blend(GPU_BLEND_NONE);
   }
 }
 
@@ -652,56 +559,13 @@ bool validSnappingNormal(const TransInfo *t)
 eSnapFlag *transform_snap_flag_from_spacetype_ptr(TransInfo *t,
                                                   const PropertyRNA **r_prop = nullptr)
 {
-  ToolSettings *ts = t->settings;
-  switch (t->spacetype) {
-    case SPACE_VIEW3D:
-      if (r_prop) {
-        *r_prop = &rna_ToolSettings_use_snap;
-      }
-      return &ts->snap_flag;
-    case SPACE_NODE:
-      if (r_prop) {
-        *r_prop = &rna_ToolSettings_use_snap_node;
-      }
-      return &ts->snap_flag_node;
-    case SPACE_IMAGE:
-      if (r_prop) {
-        *r_prop = &rna_ToolSettings_use_snap_uv;
-      }
-      return &ts->snap_uv_flag;
-    case SPACE_SEQ:
-      if (r_prop) {
-        *r_prop = &rna_ToolSettings_use_snap_sequencer;
-      }
-      return &ts->snap_flag_seq;
-    case SPACE_ACTION:
-    case SPACE_NLA:
-      if (r_prop) {
-        *r_prop = &rna_ToolSettings_use_snap_anim;
-      }
-      return &ts->snap_flag_anim;
-    case SPACE_GRAPH: {
-      SpaceGraph *graph_editor = t->area->spacedata.first_as<SpaceGraph>();
-      switch (graph_editor->mode) {
-        case SIPO_MODE_DRIVERS:
-          /* The driver editor has a separate snapping flag so it can be kept disabled while
-           * keeping it enabled in the Graph Editor. */
-          return &ts->snap_flag_driver;
-
-        case SIPO_MODE_ANIMATION: {
-          if (r_prop) {
-            *r_prop = &rna_ToolSettings_use_snap_anim;
-          }
-          return &ts->snap_flag_anim;
-        }
-        default:
-          BLI_assert_unreachable();
-          break;
-      }
+  if (t->spacetype == SPACE_VIEW3D) {
+    if (r_prop) {
+      *r_prop = &rna_ToolSettings_use_snap;
     }
+    return &t->settings->snap_flag;
   }
-  /* #SPACE_EMPTY.
-   * It can happen when the operator is called via a handle in `bpy.app.handlers`. */
+  /* #SPACE_EMPTY or unsupported space types. */
   return nullptr;
 }
 
@@ -720,45 +584,12 @@ static eSnapMode snap_mode_from_spacetype(TransInfo *t)
 {
   ToolSettings *ts = t->settings;
 
-  if (t->spacetype == SPACE_NODE) {
-    return eSnapMode(ts->snap_node_mode);
-  }
-
-  if (t->spacetype == SPACE_IMAGE) {
-    return eSnapMode(ts->snap_uv_mode);
-  }
-
-  if (t->spacetype == SPACE_SEQ) {
-    return eSnapMode(seq::tool_settings_snap_mode_get(t->scene));
-  }
-
   if (t->spacetype == SPACE_VIEW3D) {
     if (t->options & (CTX_CAMERA | CTX_EDGE_DATA | CTX_PAINT_CURVE)) {
       return SCE_SNAP_TO_INCREMENT;
     }
 
     return eSnapMode(ts->snap_mode);
-  }
-
-  if (ELEM(t->spacetype, SPACE_ACTION, SPACE_NLA)) {
-    return eSnapMode(ts->snap_anim_mode);
-  }
-
-  if (t->spacetype == SPACE_GRAPH) {
-    SpaceGraph *graph_editor = t->area->spacedata.first_as<SpaceGraph>();
-    switch (graph_editor->mode) {
-      case SIPO_MODE_DRIVERS:
-        /* Snapping to full values is the only mode that currently makes
-         * sense for the driver editor. */
-        return SCE_SNAP_TO_FRAME;
-
-      case SIPO_MODE_ANIMATION:
-        return eSnapMode(ts->snap_anim_mode);
-
-      default:
-        BLI_assert_unreachable();
-        break;
-    }
   }
 
   return SCE_SNAP_TO_INCREMENT;
@@ -885,30 +716,6 @@ void transform_snap_grid_init(const TransInfo *t, float r_snap[3], float *r_snap
           t->scene, v3d, t->region, nullptr);
     }
   }
-  else if (t->spacetype == SPACE_IMAGE) {
-    if (t->region && t->region->regiontype == RGN_TYPE_WINDOW) {
-      SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
-      const View2D *v2d = &t->region->v2d;
-      int grid_size = SI_GRID_STEPS_LEN;
-      float zoom_factor = ED_space_image_zoom_level(v2d, grid_size);
-      float grid_steps_x[SI_GRID_STEPS_LEN];
-      float grid_steps_y[SI_GRID_STEPS_LEN];
-
-      ED_space_image_grid_steps(sima, grid_steps_x, grid_steps_y, grid_size);
-      /* Snapping value based on what type of grid is used (adaptive-subdividing or custom-grid).
-       */
-      r_snap[0] = ED_space_image_increment_snap_value(grid_size, grid_steps_x, zoom_factor);
-      r_snap[1] = ED_space_image_increment_snap_value(grid_size, grid_steps_y, zoom_factor);
-      *r_snap_precision = 0.5f;
-    }
-  }
-  else if (t->spacetype == SPACE_CLIP) {
-    r_snap[0] = r_snap[1] = 0.125f;
-    *r_snap_precision = 0.5f;
-  }
-  else if (t->spacetype == SPACE_NODE) {
-    r_snap[0] = r_snap[1] = space_node::grid_size_get();
-  }
 }
 
 void transform_snap_reset_from_mode(TransInfo *t, wmOperator *op)
@@ -1024,11 +831,6 @@ void initSnapping(TransInfo *t, wmOperator *op)
       snap_object_context_init(t);
     }
   }
-  else if (t->spacetype == SPACE_SEQ) {
-    if (t->tsnap.seq_context == nullptr) {
-      t->tsnap.seq_context = snap_sequencer_data_build(t);
-    }
-  }
 
   /* Default increment values. */
   t->increment = float3(1.0f);
@@ -1037,11 +839,7 @@ void initSnapping(TransInfo *t, wmOperator *op)
 
 void freeSnapping(TransInfo *t)
 {
-  if ((t->spacetype == SPACE_SEQ) && t->tsnap.seq_context) {
-    snap_sequencer_data_free(t->tsnap.seq_context);
-    t->tsnap.seq_context = nullptr;
-  }
-  else if (t->tsnap.object_context) {
+  if (t->tsnap.object_context) {
     ed::transform::snap_object_context_destroy(t->tsnap.object_context);
     t->tsnap.object_context = nullptr;
 
@@ -1082,30 +880,6 @@ static void setSnappingCallback(TransInfo *t)
       return;
     }
     t->tsnap.snap_target_fn = snap_target_view3d_fn;
-  }
-  else if (t->spacetype == SPACE_IMAGE) {
-    SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
-    BKE_view_layer_synced_ensure(*t->bmain, t->scene, t->view_layer);
-    Object *obact = BKE_view_layer_active_object_get(t->view_layer);
-
-    const bool is_uv_editor = sima->mode == SI_MODE_UV;
-    const bool has_edit_object = obact && BKE_object_is_in_editmode(obact);
-    if (is_uv_editor && has_edit_object) {
-      t->tsnap.snap_target_fn = snap_target_uv_fn;
-    }
-  }
-  else if (t->spacetype == SPACE_NODE) {
-    /* Pass. */
-  }
-  else if (t->spacetype == SPACE_SEQ) {
-    t->tsnap.snap_target_fn = snap_target_sequencer_fn;
-    /* The target is calculated along with the snap point. */
-    return;
-  }
-  else if (t->spacetype == SPACE_NLA) {
-    t->tsnap.snap_target_fn = snap_target_nla_fn;
-    /* The target is calculated along with the snap point. */
-    return;
   }
   else {
     return;
@@ -1259,50 +1033,6 @@ static void snap_multipoints_free(TransInfo *t)
 /** \name Calc Snap
  * \{ */
 
-static void snap_grid_uv_apply(TransInfo *t, const float grid_dist[2], float r_out[2])
-{
-  float3 in;
-  convertViewVec(t, in, t->mval[0] - t->center2d[0], t->mval[1] - t->center2d[1]);
-
-  if (t->con.mode & CON_APPLY) {
-    /* We need to clear the previous Snap to Grid result,
-     * otherwise #t->con.applyVec will have no effect. */
-    t->tsnap.target_type = SCE_SNAP_TO_NONE;
-    t->tsnap.status &= ~SNAP_TARGET_FOUND;
-    transform_constraint_get_nearest(t, in, in);
-  }
-
-  const float *center_global = t->center_global;
-  for (int i = 0; i < 2; i++) {
-    const float iter_fac = grid_dist[i];
-    r_out[i] = iter_fac * roundf((in[i] + center_global[i]) / iter_fac);
-  }
-}
-
-static bool snap_grid_uv(TransInfo *t, float r_val[2])
-{
-  float grid_dist[2];
-  mul_v2_v2v2(grid_dist, t->snap_spatial, t->aspect);
-  if (t->modifiers & MOD_PRECISION) {
-    mul_v2_fl(grid_dist, t->snap_spatial_precision);
-  }
-
-  /* Early bailing out if no need to snap */
-  if (is_zero_v2(grid_dist)) {
-    return false;
-  }
-
-  snap_grid_uv_apply(t, grid_dist, r_val);
-  t->tsnap.target_type = SCE_SNAP_TO_GRID;
-  return true;
-}
-
-/** \} */
-
-/* -------------------------------------------------------------------- */
-/** \name Calc Snap
- * \{ */
-
 static void snap_target_view3d_fn(TransInfo *t, float * /*vec*/)
 {
   BLI_assert(t->spacetype == SPACE_VIEW3D);
@@ -1342,60 +1072,6 @@ static void snap_target_view3d_fn(TransInfo *t, float * /*vec*/)
   }
 
   t->tsnap.target_type = snap_elem;
-}
-
-static void snap_target_uv_fn(TransInfo *t, float * /*vec*/)
-{
-  BLI_assert(t->spacetype == SPACE_IMAGE);
-  bool found = false;
-  if (t->tsnap.mode & SCE_SNAP_TO_VERTEX) {
-    const Vector<Object *> objects =
-        BKE_view_layer_array_from_objects_in_edit_mode_unique_data_with_uvs(
-            *t->bmain, t->scene, t->view_layer, nullptr);
-
-    float dist_sq = square_f(float(SNAP_MIN_DISTANCE));
-    if (ED_uvedit_nearest_uv_multi(&t->region->v2d,
-                                   t->scene,
-                                   objects,
-                                   t->mval,
-                                   t->tsnap.target_operation & SCE_SNAP_TARGET_NOT_SELECTED,
-                                   &dist_sq,
-                                   t->tsnap.snap_target))
-    {
-      t->tsnap.snap_target[0] *= t->aspect[0];
-      t->tsnap.snap_target[1] *= t->aspect[1];
-      t->tsnap.target_type = SCE_SNAP_TO_EDGE_ENDPOINT;
-      found = true;
-    }
-  }
-
-  if (!found && (t->tsnap.mode & SCE_SNAP_TO_GRID)) {
-    found = snap_grid_uv(t, t->tsnap.snap_target);
-  }
-
-  SET_FLAG_FROM_TEST(t->tsnap.status, found, SNAP_TARGET_FOUND);
-}
-
-static void snap_target_sequencer_fn(TransInfo *t, float * /*vec*/)
-{
-  BLI_assert(t->spacetype == SPACE_SEQ);
-  if (snap_sequencer_calc(t)) {
-    t->tsnap.status |= (SNAP_TARGET_FOUND | SNAP_SOURCE_FOUND);
-  }
-  else {
-    t->tsnap.status &= ~(SNAP_TARGET_FOUND | SNAP_SOURCE_FOUND);
-  }
-}
-
-static void snap_target_nla_fn(TransInfo *t, float *vec)
-{
-  BLI_assert(t->spacetype == SPACE_NLA);
-  if (transform_snap_nla_calc(t, vec)) {
-    t->tsnap.status |= (SNAP_TARGET_FOUND | SNAP_SOURCE_FOUND);
-  }
-  else {
-    t->tsnap.status &= ~(SNAP_TARGET_FOUND | SNAP_SOURCE_FOUND);
-  }
 }
 
 /** \} */

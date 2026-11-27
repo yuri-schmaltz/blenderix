@@ -94,17 +94,10 @@ void BKE_modifier_init()
   modifier_type_init(modifier_types); /* MOD_util.cc */
 
   /* Initialize global common storage used for virtual modifier list. */
-  md = BKE_modifier_new(eModifierType_Armature);
-  virtualModifierCommonData.amd = *(reinterpret_cast<ArmatureModifierData *>(md));
-  BKE_modifier_free(md);
-
-  md = BKE_modifier_new(eModifierType_Curve);
-  virtualModifierCommonData.cmd = *(reinterpret_cast<CurveModifierData *>(md));
-  BKE_modifier_free(md);
-
-  md = BKE_modifier_new(eModifierType_Lattice);
-  virtualModifierCommonData.lmd = *(reinterpret_cast<LatticeModifierData *>(md));
-  BKE_modifier_free(md);
+  virtualModifierCommonData = {};
+  virtualModifierCommonData.amd.modifier.type = eModifierType_Armature;
+  virtualModifierCommonData.cmd.modifier.type = eModifierType_Curve;
+  virtualModifierCommonData.lmd.modifier.type = eModifierType_Lattice;
 
   md = BKE_modifier_new(eModifierType_ShapeKey);
   virtualModifierCommonData.smd = *(reinterpret_cast<ShapeKeyModifierData *>(md));
@@ -1150,88 +1143,6 @@ void BKE_modifier_blend_write(BlendWriter *writer,
     }
 
     writer->write_struct_by_name(mti->struct_name, &md);
-
-    if (md.type == eModifierType_Cloth) {
-      ClothModifierData *clmd = reinterpret_cast<ClothModifierData *>(&md);
-
-      writer->write_struct(clmd->sim_parms);
-      writer->write_struct(clmd->coll_parms);
-      if (clmd->sim_parms) {
-        writer->write_struct(clmd->sim_parms->effector_weights);
-      }
-      BKE_ptcache_blend_write(writer, &clmd->ptcaches);
-    }
-    else if (md.type == eModifierType_Fluid) {
-      FluidModifierData *fmd = reinterpret_cast<FluidModifierData *>(&md);
-
-      if (fmd->type & MOD_FLUID_TYPE_DOMAIN) {
-        writer->write_struct(fmd->domain);
-
-        if (fmd->domain) {
-          BKE_ptcache_blend_write(writer, &(fmd->domain->ptcaches[0]));
-
-          /* create fake pointcache so that old blender versions can read it */
-          fmd->domain->point_cache[1] = BKE_ptcache_add(&fmd->domain->ptcaches[1]);
-          fmd->domain->point_cache[1]->flag |= PTCACHE_DISK_CACHE | PTCACHE_FAKE_SMOKE;
-          fmd->domain->point_cache[1]->step = 1;
-
-          BKE_ptcache_blend_write(writer, &(fmd->domain->ptcaches[1]));
-
-          if (fmd->domain->coba) {
-            writer->write_struct(fmd->domain->coba);
-          }
-
-          /* cleanup the fake pointcache */
-          BKE_ptcache_free_list(&fmd->domain->ptcaches[1]);
-          fmd->domain->point_cache[1] = nullptr;
-
-          writer->write_struct(fmd->domain->effector_weights);
-        }
-      }
-      else if (fmd->type & MOD_FLUID_TYPE_FLOW) {
-        writer->write_struct(fmd->flow);
-      }
-      else if (fmd->type & MOD_FLUID_TYPE_EFFEC) {
-        writer->write_struct(fmd->effector);
-      }
-    }
-    else if (md.type == eModifierType_Fluidsim) {
-      BLI_assert_unreachable(); /* Deprecated data, should never be written. */
-    }
-    else if (md.type == eModifierType_DynamicPaint) {
-      DynamicPaintModifierData *pmd = reinterpret_cast<DynamicPaintModifierData *>(&md);
-
-      if (pmd->canvas) {
-        writer->write_struct(pmd->canvas);
-
-        /* write surfaces */
-        for (DynamicPaintSurface &surface : pmd->canvas->surfaces) {
-          writer->write_struct(&surface);
-        }
-        /* write caches and effector weights */
-        for (DynamicPaintSurface &surface : pmd->canvas->surfaces) {
-          BKE_ptcache_blend_write(writer, &(surface.ptcaches));
-
-          writer->write_struct(surface.effector_weights);
-        }
-      }
-      if (pmd->brush) {
-        writer->write_struct(pmd->brush);
-        writer->write_struct(pmd->brush->paint_ramp);
-        writer->write_struct(pmd->brush->vel_ramp);
-      }
-    }
-    else if (md.type == eModifierType_Collision) {
-
-#if 0
-      CollisionModifierData *collmd = (CollisionModifierData *)md;
-      /* TODO: CollisionModifier should use pointcache
-       * + have proper reset events before enabling this. */
-      writestruct(wd, DATA, float[3], collmd->numverts, collmd->x);
-      writestruct(wd, DATA, float[3], collmd->numverts, collmd->xnew);
-      writestruct(wd, DATA, MFace, collmd->numfaces, collmd->mfaces);
-#endif
-    }
   }
 }
 
@@ -1247,11 +1158,106 @@ void BKE_modifier_blend_write(BlendWriter *writer,
 static size_t modifier_struct_size(const ModifierType type)
 {
   switch (type) {
-    /* Deprecated modifier types without typeinfo, still needed for versioning. */
+    /* Deprecated and removed non-mesh modifier types without runtime ModifierTypeInfo,
+     * preserved with exact DNA struct sizes for legacy .blend compatibility. */
     case eModifierType_Fluidsim:
       return sizeof(FluidsimModifierData);
     case eModifierType_Smoke:
       return sizeof(SmokeModifierData);
+    case eModifierType_Curve:
+      return sizeof(CurveModifierData);
+    case eModifierType_Lattice:
+      return sizeof(LatticeModifierData);
+    case eModifierType_UVProject:
+      return sizeof(UVProjectModifierData);
+    case eModifierType_Armature:
+      return sizeof(ArmatureModifierData);
+    case eModifierType_Softbody:
+      return sizeof(SoftbodyModifierData);
+    case eModifierType_Cloth:
+      return sizeof(ClothModifierData);
+    case eModifierType_Collision:
+      return sizeof(CollisionModifierData);
+    case eModifierType_Ocean:
+      return sizeof(OceanModifierData);
+    case eModifierType_ParticleSystem:
+      return sizeof(ParticleSystemModifierData);
+    case eModifierType_ParticleInstance:
+      return sizeof(ParticleInstanceModifierData);
+    case eModifierType_Explode:
+      return sizeof(ExplodeModifierData);
+    case eModifierType_Surface:
+      return sizeof(SurfaceModifierData);
+    case eModifierType_Fluid:
+      return sizeof(FluidModifierData);
+    case eModifierType_DynamicPaint:
+      return sizeof(DynamicPaintModifierData);
+    case eModifierType_UVWarp:
+      return sizeof(UVWarpModifierData);
+    case eModifierType_MeshCache:
+      return sizeof(MeshCacheModifierData);
+    case eModifierType_MeshSequenceCache:
+      return sizeof(MeshSeqCacheModifierData);
+    case eModifierType_MeshToVolume:
+      return sizeof(MeshToVolumeModifierData);
+    case eModifierType_VolumeDisplace:
+      return sizeof(VolumeDisplaceModifierData);
+    case eModifierType_VolumeToMesh:
+      return sizeof(VolumeToMeshModifierData);
+    case eModifierType_Nodes:
+      return sizeof(NodesModifierData);
+    case eModifierType_GreasePencilOpacity:
+      return sizeof(GreasePencilOpacityModifierData);
+    case eModifierType_GreasePencilSubdiv:
+      return sizeof(GreasePencilSubdivModifierData);
+    case eModifierType_GreasePencilColor:
+      return sizeof(GreasePencilColorModifierData);
+    case eModifierType_GreasePencilTint:
+      return sizeof(GreasePencilTintModifierData);
+    case eModifierType_GreasePencilSmooth:
+      return sizeof(GreasePencilSmoothModifierData);
+    case eModifierType_GreasePencilOffset:
+      return sizeof(GreasePencilOffsetModifierData);
+    case eModifierType_GreasePencilNoise:
+      return sizeof(GreasePencilNoiseModifierData);
+    case eModifierType_GreasePencilMirror:
+      return sizeof(GreasePencilMirrorModifierData);
+    case eModifierType_GreasePencilThickness:
+      return sizeof(GreasePencilThickModifierData);
+    case eModifierType_GreasePencilLattice:
+      return sizeof(GreasePencilLatticeModifierData);
+    case eModifierType_GreasePencilDash:
+      return sizeof(GreasePencilDashModifierData);
+    case eModifierType_GreasePencilMultiply:
+      return sizeof(GreasePencilMultiModifierData);
+    case eModifierType_GreasePencilLength:
+      return sizeof(GreasePencilLengthModifierData);
+    case eModifierType_GreasePencilWeightAngle:
+      return sizeof(GreasePencilWeightAngleModifierData);
+    case eModifierType_GreasePencilArray:
+      return sizeof(GreasePencilArrayModifierData);
+    case eModifierType_GreasePencilWeightProximity:
+      return sizeof(GreasePencilWeightProximityModifierData);
+    case eModifierType_GreasePencilHook:
+      return sizeof(GreasePencilHookModifierData);
+    case eModifierType_GreasePencilLineart:
+      return sizeof(GreasePencilLineartModifierData);
+    case eModifierType_GreasePencilArmature:
+      return sizeof(GreasePencilArmatureModifierData);
+    case eModifierType_GreasePencilTime:
+      return sizeof(GreasePencilTimeModifierData);
+    case eModifierType_GreasePencilSimplify:
+      return sizeof(GreasePencilSimplifyModifierData);
+    case eModifierType_GreasePencilEnvelope:
+      return sizeof(GreasePencilEnvelopeModifierData);
+    case eModifierType_GreasePencilOutline:
+      return sizeof(GreasePencilOutlineModifierData);
+    case eModifierType_GreasePencilShrinkwrap:
+      return sizeof(GreasePencilShrinkwrapModifierData);
+    case eModifierType_GreasePencilBuild:
+      return sizeof(GreasePencilBuildModifierData);
+    case eModifierType_GreasePencilTexture:
+      return sizeof(GreasePencilTextureModifierData);
     default: {
       const ModifierTypeInfo *mti = BKE_modifier_get_info(type);
       return mti ? size_t(mti->struct_size) : sizeof(ModifierData);
@@ -1301,148 +1307,6 @@ void BKE_modifier_blend_read_data(BlendDataReader *reader, ListBaseT<ModifierDat
 
     if (is_allocated) {
       /* All the fields has been properly allocated. */
-    }
-    else if (md->type == eModifierType_Cloth) {
-      ClothModifierData *clmd = reinterpret_cast<ClothModifierData *>(md);
-
-      clmd->clothObject = nullptr;
-      clmd->hairdata = nullptr;
-
-      BLO_read_struct(reader, ClothSimSettings, &clmd->sim_parms);
-      BLO_read_struct(reader, ClothCollSettings, &clmd->coll_parms);
-
-      BKE_ptcache_blend_read_data(reader, &clmd->ptcaches, &clmd->point_cache, 0);
-
-      if (clmd->sim_parms) {
-        if (clmd->sim_parms->presets > 10) {
-          clmd->sim_parms->presets = 0;
-        }
-
-        clmd->sim_parms->reset = 0;
-
-        BLO_read_struct(reader, EffectorWeights, &clmd->sim_parms->effector_weights);
-
-        if (!clmd->sim_parms->effector_weights) {
-          clmd->sim_parms->effector_weights = BKE_effector_add_weights(nullptr);
-        }
-      }
-
-      clmd->solver_result = nullptr;
-    }
-    else if (md->type == eModifierType_Fluid) {
-
-      FluidModifierData *fmd = reinterpret_cast<FluidModifierData *>(md);
-
-      if (fmd->type == MOD_FLUID_TYPE_DOMAIN) {
-        fmd->flow = nullptr;
-        fmd->effector = nullptr;
-        if (BLO_read_struct_nonnull(reader, FluidDomainSettings, &fmd->domain)) {
-          fmd->domain->fmd = fmd;
-
-          fmd->domain->fluid = nullptr;
-          fmd->domain->fluid_mutex = BLI_rw_mutex_alloc();
-          fmd->domain->tex_density = nullptr;
-          fmd->domain->tex_color = nullptr;
-          fmd->domain->tex_shadow = nullptr;
-          fmd->domain->tex_flame = nullptr;
-          fmd->domain->tex_flame_coba = nullptr;
-          fmd->domain->tex_coba = nullptr;
-          fmd->domain->tex_field = nullptr;
-          fmd->domain->tex_velocity_x = nullptr;
-          fmd->domain->tex_velocity_y = nullptr;
-          fmd->domain->tex_velocity_z = nullptr;
-          fmd->domain->tex_wt = nullptr;
-          BLO_read_struct(reader, ColorBand, &fmd->domain->coba);
-
-          BLO_read_struct(reader, EffectorWeights, &fmd->domain->effector_weights);
-          if (!fmd->domain->effector_weights) {
-            fmd->domain->effector_weights = BKE_effector_add_weights(nullptr);
-          }
-
-          BKE_ptcache_blend_read_data(
-              reader, &(fmd->domain->ptcaches[0]), &(fmd->domain->point_cache[0]), 1);
-
-          /* Manta sim uses only one cache from now on, so store pointer convert */
-          if (fmd->domain->ptcaches[1].first() || fmd->domain->point_cache[1]) {
-            PointCache *cache = fmd->domain->point_cache[1];
-            if (BLO_read_struct_no_us_nonnull(reader, PointCache, &cache)) {
-              if (cache->flag & PTCACHE_FAKE_SMOKE) {
-                /* Manta-sim/smoke was already saved in "new format" and this cache is fake. */
-              }
-              else {
-                printf(
-                    "High resolution manta cache not available due to pointcache update. Please "
-                    "reset the simulation.\n");
-              }
-            }
-            BLI_listbase_clear(&fmd->domain->ptcaches[1]);
-            fmd->domain->point_cache[1] = nullptr;
-          }
-
-          /* Flag for refreshing the simulation after loading */
-          fmd->domain->flags |= FLUID_DOMAIN_FILE_LOAD;
-        }
-      }
-      else if (fmd->type == MOD_FLUID_TYPE_FLOW) {
-        fmd->domain = nullptr;
-        fmd->effector = nullptr;
-        if (BLO_read_struct_nonnull(reader, FluidFlowSettings, &fmd->flow)) {
-          fmd->flow->fmd = fmd;
-          fmd->flow->mesh = nullptr;
-          fmd->flow->verts_old = nullptr;
-          fmd->flow->numverts = 0;
-          BLO_read_struct(reader, ParticleSystem, &fmd->flow->psys);
-
-          fmd->flow->flags &= ~FLUID_FLOW_NEEDS_UPDATE;
-        }
-      }
-      else if (fmd->type == MOD_FLUID_TYPE_EFFEC) {
-        fmd->flow = nullptr;
-        fmd->domain = nullptr;
-        if (BLO_read_struct_nonnull(reader, FluidEffectorSettings, &fmd->effector)) {
-          fmd->effector->fmd = fmd;
-          fmd->effector->verts_old = nullptr;
-          fmd->effector->numverts = 0;
-          fmd->effector->mesh = nullptr;
-
-          fmd->effector->flags &= ~FLUID_EFFECTOR_NEEDS_UPDATE;
-        }
-        else {
-          fmd->type = FluidModifierType{};
-          fmd->flow = nullptr;
-          fmd->domain = nullptr;
-          fmd->effector = nullptr;
-        }
-      }
-    }
-    else if (md->type == eModifierType_DynamicPaint) {
-      DynamicPaintModifierData *pmd = reinterpret_cast<DynamicPaintModifierData *>(md);
-
-      if (BLO_read_struct_nonnull(reader, DynamicPaintCanvasSettings, &pmd->canvas)) {
-        pmd->canvas->pmd = pmd;
-        pmd->canvas->flags &= ~MOD_DPAINT_BAKING; /* just in case */
-
-        if (pmd->canvas->surfaces.first()) {
-          BLO_read_struct_list(reader, DynamicPaintSurface, &pmd->canvas->surfaces);
-
-          for (DynamicPaintSurface &surface : pmd->canvas->surfaces) {
-            surface.canvas = pmd->canvas;
-            surface.data = nullptr;
-            BKE_ptcache_blend_read_data(reader, &(surface.ptcaches), &(surface.pointcache), 1);
-
-            BLO_read_struct(reader, EffectorWeights, &surface.effector_weights);
-            if (surface.effector_weights == nullptr) {
-              surface.effector_weights = BKE_effector_add_weights(nullptr);
-            }
-          }
-        }
-      }
-      if (BLO_read_struct_nonnull(reader, DynamicPaintBrushSettings, &pmd->brush)) {
-        pmd->brush->pmd = pmd;
-        BLO_read_struct(reader, ParticleSystem, &pmd->brush->psys);
-        BLO_read_struct(reader, ColorBand, &pmd->brush->paint_ramp);
-        BLO_read_struct(reader, ColorBand, &pmd->brush->vel_ramp);
-      }
     }
 
     if ((mti != nullptr) && (mti->blend_read != nullptr)) {

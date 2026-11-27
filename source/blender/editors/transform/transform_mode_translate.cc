@@ -18,7 +18,6 @@
 #include "BLI_string_utils.hh"
 #include "BLI_task.hh"
 
-#include "BKE_image.hh"
 #include "BKE_report.hh"
 #include "BKE_unit.hh"
 
@@ -427,48 +426,6 @@ static void applyTranslationValue(TransInfo *t, const float vec[3])
   custom_data->prev.rotate_mode = rotate_mode;
 }
 
-static bool clip_uv_transform_translation(TransInfo *t, float vec[2])
-{
-  /* Stores the coordinates of the closest UDIM tile.
-   * Also acts as an offset to the tile from the origin of UV space. */
-  float base_offset[2] = {0.0f, 0.0f};
-
-  /* If tiled image then constrain to correct/closest UDIM tile, else 0-1 UV space. */
-  const SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
-  BKE_image_find_nearest_tile_with_offset(sima->image, t->center_global, base_offset);
-
-  float min[2], max[2];
-  min[0] = min[1] = FLT_MAX;
-  max[0] = max[1] = -FLT_MAX;
-
-  FOREACH_TRANS_DATA_CONTAINER (t, tc) {
-    for (TransData *td = tc->data; td < tc->data + tc->data_len; td++) {
-      minmax_v2v2_v2(min, max, td->loc);
-    }
-  }
-
-  bool result = false;
-  if (min[0] < base_offset[0]) {
-    vec[0] += base_offset[0] - min[0];
-    result = true;
-  }
-  else if (max[0] > base_offset[0] + t->aspect[0]) {
-    vec[0] -= max[0] - base_offset[0] - t->aspect[0];
-    result = true;
-  }
-
-  if (min[1] < base_offset[1]) {
-    vec[1] += base_offset[1] - min[1];
-    result = true;
-  }
-  else if (max[1] > base_offset[1] + t->aspect[1]) {
-    vec[1] -= max[1] - base_offset[1] - t->aspect[1];
-    result = true;
-  }
-
-  return result;
-}
-
 static void applyTranslation(TransInfo *t)
 {
   char str[UI_MAX_DRAW_STR] = "";
@@ -553,17 +510,6 @@ static void initTranslation(TransInfo *t, wmOperator * /*op*/)
   t->num.idx_max = t->idx_max;
 
   float3 aspect = t->aspect;
-  /* Custom aspect for fcurve. */
-  if ((t->spacetype == SPACE_GRAPH) && (t->region != nullptr)) {
-    View2D *v2d = &t->region->v2d;
-    Scene *scene = t->scene;
-    SpaceGraph *sipo = t->area->spacedata.first_as<SpaceGraph>();
-    const bool display_seconds = (sipo->mode == SIPO_MODE_ANIMATION) &&
-                                 (sipo->flag & SIPO_DRAWTIME);
-    aspect[0] = ui::view2d_grid_resolution_x(v2d, scene, display_seconds);
-    aspect[1] = ui::view2d_grid_resolution_y__values(v2d, 10);
-  }
-
   t->increment = t->snap_spatial * aspect;
   t->increment_precision = t->snap_spatial_precision;
 

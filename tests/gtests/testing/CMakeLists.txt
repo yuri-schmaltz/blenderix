@@ -22,7 +22,6 @@ set(INC_SYS
 
 set(SRC
   testing_main.cc
-  ../../../source/creator/mesh_only_runtime_stubs.cc
 
   testing.h
 )

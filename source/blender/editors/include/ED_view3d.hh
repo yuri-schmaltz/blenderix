@@ -450,48 +450,6 @@ void mesh_foreachScreenFace(
     void (*func)(void *user_data, BMFace *efa, const float screen_co[2], int index),
     void *user_data,
     eV3DProjTest clip_flag);
-void nurbs_foreachScreenVert(const ViewContext *vc,
-                             void (*func)(void *user_data,
-                                          Nurb *nu,
-                                          BPoint *bp,
-                                          BezTriple *bezt,
-                                          int beztindex,
-                                          bool handle_visible,
-                                          const float screen_co[2]),
-                             void *user_data,
-                             eV3DProjTest clip_flag);
-/**
- * #ED_view3d_init_mats_rv3d must be called first.
- */
-void mball_foreachScreenElem(const ViewContext *vc,
-                             void (*func)(void *user_data, MetaElem *ml, const float screen_co[2]),
-                             void *user_data,
-                             eV3DProjTest clip_flag);
-void lattice_foreachScreenVert(const ViewContext *vc,
-                               void (*func)(void *user_data, BPoint *bp, const float screen_co[2]),
-                               void *user_data,
-                               eV3DProjTest clip_flag);
-/**
- * #ED_view3d_init_mats_rv3d must be called first.
- */
-void armature_foreachScreenBone(const ViewContext *vc,
-                                void (*func)(void *user_data,
-                                             EditBone *ebone,
-                                             const float screen_co_a[2],
-                                             const float screen_co_b[2]),
-                                void *user_data,
-                                eV3DProjTest clip_flag);
-
-/**
- * ED_view3d_init_mats_rv3d must be called first.
- */
-void pose_foreachScreenBone(const ViewContext *vc,
-                            void (*func)(void *user_data,
-                                         bPoseChannel *pchan,
-                                         const float screen_co_a[2],
-                                         const float screen_co_b[2]),
-                            void *user_data,
-                            eV3DProjTest clip_flag);
 /* *** end iterators *** */
 
 /* `view3d_project.cc` */

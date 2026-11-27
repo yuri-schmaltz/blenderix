@@ -196,67 +196,6 @@ static void apply_shear_value(TransInfo *t, const float value)
   }
 }
 
-static bool uv_shear_in_clip_bounds_test(const TransInfo *t, const float value)
-{
-  const int axis = t->orient_axis_ortho;
-  if (axis < 0 || 1 < axis) {
-    return true; /* Non standard axis, nothing to do. */
-  }
-  const float *center = t->center_global;
-  FOREACH_TRANS_DATA_CONTAINER (t, tc) {
-    TransData *td = tc->data;
-    for (int i = 0; i < tc->data_len; i++, td++) {
-      if (td->flag & TD_SKIP) {
-        continue;
-      }
-      if (td->factor < 1.0f) {
-        continue; /* Proportional edit, will get picked up in next phase. */
-      }
-
-      float uv[2];
-      sub_v2_v2v2(uv, td->iloc, center);
-      uv[axis] = uv[axis] + value * uv[1 - axis] * (2 * axis - 1);
-      add_v2_v2(uv, center);
-      /* TODO: UDIM support. */
-      if (uv[axis] < 0.0f || 1.0f < uv[axis]) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-static bool clip_uv_transform_shear(const TransInfo *t, float *vec, float *vec_inside_bounds)
-{
-  float value = vec[0];
-  if (uv_shear_in_clip_bounds_test(t, value)) {
-    vec_inside_bounds[0] = value; /* Store for next iteration. */
-    return false;                 /* Nothing to do. */
-  }
-  float value_inside_bounds = vec_inside_bounds[0];
-  if (!uv_shear_in_clip_bounds_test(t, value_inside_bounds)) {
-    return false; /* No known way to fix, may as well shear anyway. */
-  }
-  const int max_i = 32; /* Limit iteration, mainly for debugging. */
-  for (int i = 0; i < max_i; i++) {
-    /* Binary search. */
-    const float value_mid = (value_inside_bounds + value) / 2.0f;
-    if (ELEM(value_mid, value_inside_bounds, value)) {
-      break; /* Float precision reached. */
-    }
-    if (uv_shear_in_clip_bounds_test(t, value_mid)) {
-      value_inside_bounds = value_mid;
-    }
-    else {
-      value = value_mid;
-    }
-  }
-
-  vec_inside_bounds[0] = value_inside_bounds; /* Store for next iteration. */
-  vec[0] = value_inside_bounds;               /* Update shear value. */
-  return true;
-}
-
 static void apply_shear(TransInfo *t)
 {
   float value = t->values[0] + t->values_modal_offset[0];

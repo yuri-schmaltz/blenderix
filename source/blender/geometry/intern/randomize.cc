@@ -253,52 +253,9 @@ void debug_randomize_face_order(Mesh *mesh)
   mesh->tag_topology_changed();
 }
 
-void debug_randomize_point_order(PointCloud *pointcloud)
-{
-  if (pointcloud == nullptr || !use_debug_randomization()) {
-    return;
-  }
+void debug_randomize_point_order(PointCloud * /*pointcloud*/) {}
 
-  const int seed = seed_from_pointcloud(*pointcloud);
-  const Array<int> new_by_old_map = get_permutation(pointcloud->totpoint, seed);
-  const Array<int> old_by_new_map = invert_permutation(new_by_old_map);
-  reorder_attribute_domain(
-      pointcloud->attribute_storage.wrap(), bke::AttrDomain::Point, old_by_new_map);
-
-  pointcloud->tag_positions_changed();
-  pointcloud->tag_radii_changed();
-}
-
-void debug_randomize_curve_order(bke::CurvesGeometry *curves)
-{
-  if (curves == nullptr || !use_debug_randomization()) {
-    return;
-  }
-
-  const int seed = seed_from_curves(*curves);
-  const Array<int> new_by_old_map = get_permutation(curves->curve_num, seed);
-  const Array<int> old_by_new_map = invert_permutation(new_by_old_map);
-
-  bke::AttributeStorage &attributes = curves->attribute_storage.wrap();
-
-  reorder_attribute_domain(attributes, bke::AttrDomain::Curve, old_by_new_map);
-
-  const OffsetIndices old_points_by_curve = curves->points_by_curve();
-  Array<int> new_curve_offsets = make_new_offset_indices(old_points_by_curve, old_by_new_map);
-  const OffsetIndices<int> new_points_by_curve = new_curve_offsets.as_span();
-
-  reorder_customdata_groups(
-      curves->point_data, old_points_by_curve, new_points_by_curve, new_by_old_map);
-  reorder_attribute_groups(attributes,
-                           bke::AttrDomain::Point,
-                           old_points_by_curve,
-                           new_points_by_curve,
-                           new_by_old_map);
-
-  curves->offsets_for_write().copy_from(new_curve_offsets);
-
-  curves->tag_topology_changed();
-}
+void debug_randomize_curve_order(bke::CurvesGeometry * /*curves*/) {}
 
 void debug_randomize_mesh_order(Mesh *mesh)
 {

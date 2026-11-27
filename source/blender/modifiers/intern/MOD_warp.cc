@@ -80,17 +80,9 @@ static void required_data_mask(ModifierData *md, CustomData_MeshMasks *r_cddata_
 static void matrix_from_obj_pchan(float mat[4][4],
                                   const float obinv[4][4],
                                   Object *ob,
-                                  const char *bonename)
+                                  const char * /*bonename*/)
 {
-  bPoseChannel *pchan = BKE_pose_channel_find_name(ob->pose, bonename);
-  if (pchan) {
-    float mat_bone_world[4][4];
-    mul_m4_m4m4(mat_bone_world, ob->object_to_world().ptr(), pchan->pose_mat);
-    mul_m4_m4m4(mat, obinv, mat_bone_world);
-  }
-  else {
-    mul_m4_m4m4(mat, obinv, ob->object_to_world().ptr());
-  }
+  mul_m4_m4m4(mat, obinv, ob->object_to_world().ptr());
 }
 
 static bool depends_on_time(Scene * /*scene*/, ModifierData *md)

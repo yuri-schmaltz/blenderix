@@ -22,7 +22,6 @@ struct ViewLayer;
 
 namespace ed::transform {
 
-bool gimbal_axis_pose(Object *ob, const bPoseChannel *pchan, float gmat[3][3]);
 bool gimbal_axis_object(Object *ob, float gmat[3][3]);
 
 /**

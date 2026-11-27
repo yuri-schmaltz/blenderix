@@ -30,8 +30,6 @@
 #include "IO_fbx.hh"
 
 #include "fbx_import.hh"
-#include "fbx_import_anim.hh"
-#include "fbx_import_armature.hh"
 #include "fbx_import_material.hh"
 #include "fbx_import_mesh.hh"
 #include "fbx_import_util.hh"
@@ -247,10 +245,7 @@ void FbxImportContext::import_lights()
   }
 }
 
-void FbxImportContext::import_armatures()
-{
-  io::fbx::import_armatures(*this->bmain, this->fbx, this->mapping, this->params);
-}
+void FbxImportContext::import_armatures() {}
 
 void FbxImportContext::import_empties()
 {
@@ -283,13 +278,7 @@ void FbxImportContext::import_empties()
   }
 }
 
-void FbxImportContext::import_animation(double fps)
-{
-  if (this->params.use_anim) {
-    io::fbx::import_animations(
-        *this->bmain, this->fbx, this->mapping, fps, this->params.anim_offset);
-  }
-}
+void FbxImportContext::import_animation(double /*fps*/) {}
 
 void FbxImportContext::setup_hierarchy()
 {

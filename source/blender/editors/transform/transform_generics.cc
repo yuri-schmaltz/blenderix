@@ -23,28 +23,17 @@
 
 #include "RNA_access.hh"
 
-#include "BKE_brush.hh"
 #include "BKE_context.hh"
 #include "BKE_layer.hh"
-#include "BKE_mask.hh"
-#include "BKE_modifier.hh"
-#include "BKE_paint.hh"
 #include "BKE_screen.hh"
 
-#include "SEQ_transform.hh"
-
-#include "ED_clip.hh"
-#include "ED_image.hh"
 #include "ED_object.hh"
 #include "ED_screen.hh"
 #include "ED_space_api.hh"
-#include "ED_uvedit.hh"
 
 #include "WM_api.hh"
 
 #include "UI_view2d.hh"
-
-#include "SEQ_sequencer.hh"
 
 #include "transform.hh"
 #include "transform_convert.hh"
@@ -85,7 +74,6 @@ static int t_around_get(TransInfo *t)
     return V3D_AROUND_CENTER_BOUNDS;
   }
 
-  ScrArea *area = t->area;
   switch (t->spacetype) {
     case SPACE_VIEW3D: {
       if (t->mode == TFM_BEND) {
@@ -93,24 +81,6 @@ static int t_around_get(TransInfo *t)
         return V3D_AROUND_CURSOR;
       }
       return t->settings->transform_pivot_point;
-    }
-    case SPACE_IMAGE: {
-      SpaceImage *sima = area->spacedata.first_as<SpaceImage>();
-      return sima->around;
-    }
-    case SPACE_GRAPH: {
-      SpaceGraph *sipo = area->spacedata.first_as<SpaceGraph>();
-      return sipo->around;
-    }
-    case SPACE_CLIP: {
-      SpaceClip *sclip = area->spacedata.first_as<SpaceClip>();
-      return sclip->around;
-    }
-    case SPACE_SEQ: {
-      if (t->region->regiontype == RGN_TYPE_PREVIEW) {
-        return seq::tool_settings_pivot_point_get(t->scene);
-      }
-      break;
     }
     default:
       break;
@@ -130,15 +100,8 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
   ToolSettings *ts = CTX_data_tool_settings(C);
   ARegion *region = CTX_wm_region(C);
   ScrArea *area = CTX_wm_area(C);
-  const bool is_sequencer = CTX_wm_space_seq(C) != nullptr;
-  if (!is_sequencer) {
-    t->scene = sce;
-    t->view_layer = view_layer;
-  }
-  else {
-    t->scene = CTX_data_sequencer_scene(C);
-    t->view_layer = t->scene ? BKE_view_layer_default_render(t->scene) : nullptr;
-  }
+  t->scene = sce;
+  t->view_layer = view_layer;
 
   PropertyRNA *prop;
 
@@ -278,14 +241,6 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
       t->flag |= T_V3D_ALIGN;
     }
 
-    if (object_mode & (OB_MODE_ALL_PAINT_MESH | OB_MODE_SCULPT_CURVES)) {
-      Paint *paint = BKE_paint_get_active_from_context(C);
-      Brush *brush = (paint) ? BKE_paint_brush(paint) : nullptr;
-      if (brush && (brush->stroke_method == BRUSH_STROKE_CURVE)) {
-        t->options |= CTX_PAINT_CURVE;
-      }
-    }
-
     /* Initialize UV transform from. */
     if (op && (prop = RNA_struct_find_property(op->ptr, "correct_uv"))) {
       if (RNA_property_is_set(op->ptr, prop)) {
@@ -301,40 +256,6 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
             op->ptr, prop, (t->settings->uvcalc_flag & UVCALC_TRANSFORM_CORRECT_SLIDE) != 0);
       }
     }
-  }
-  else if (t->spacetype == SPACE_IMAGE) {
-    SpaceImage *sima = area->spacedata.first_as<SpaceImage>();
-    BKE_view_layer_synced_ensure(*t->bmain, t->scene, t->view_layer);
-    if (ED_space_image_show_uvedit(sima, BKE_view_layer_active_object_get(t->view_layer))) {
-      /* UV transform. */
-    }
-    else if (sima->mode == SI_MODE_MASK) {
-      t->options |= CTX_MASK;
-    }
-    else if (sima->mode == SI_MODE_PAINT) {
-      Paint *paint = &sce->toolsettings->imapaint.paint;
-      Brush *brush = (paint) ? BKE_paint_brush(paint) : nullptr;
-      if (brush && (brush->stroke_method == BRUSH_STROKE_CURVE)) {
-        t->options |= CTX_PAINT_CURVE;
-      }
-    }
-    /* Image not in UV edit, nor in mask mode, can happen for some tools. */
-  }
-  else if (t->spacetype == SPACE_CLIP) {
-    SpaceClip *sclip = area->spacedata.first_as<SpaceClip>();
-    if (ED_space_clip_check_show_trackedit(sclip)) {
-      t->options |= CTX_MOVIECLIP;
-    }
-    else if (ED_space_clip_check_show_maskedit(sclip)) {
-      t->options |= CTX_MASK;
-    }
-  }
-  else if (t->spacetype == SPACE_SEQ && region->regiontype == RGN_TYPE_PREVIEW) {
-    t->options |= CTX_SEQUENCER_IMAGE;
-
-    /* Needed for auto-keying transforms in preview during playback. */
-    bScreen *animscreen = ED_screen_animation_playing(CTX_wm_manager(C));
-    t->animtimer = (animscreen) ? animscreen->animtimer : nullptr;
   }
 
   setTransformViewAspect(t, t->aspect);
@@ -811,18 +732,6 @@ void postTrans(bContext *C, TransInfo *t)
 
   t->tsnap.points.free_no_destruct();
 
-  if (t->spacetype == SPACE_IMAGE) {
-    if (t->options & (CTX_MASK | CTX_PAINT_CURVE)) {
-      /* Pass. */
-    }
-    else {
-      SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
-      if (sima->flag & SI_LIVE_UNWRAP) {
-        ED_uvedit_live_unwrap_end(t->state == TRANS_CANCEL);
-      }
-    }
-  }
-
   if (t->mouse.data) {
     MEM_delete_void(t->mouse.data);
   }
@@ -957,72 +866,16 @@ void calculateCenterCursor(TransInfo *t, float r_center[3])
   }
 }
 
-void calculateCenterCursor2D(TransInfo *t, float r_center[2])
+void calculateCenterCursor2D(TransInfo * /*t*/, float r_center[2])
 {
-  float cursor_local_buf[2];
-  const float *cursor = nullptr;
-
-  if (t->spacetype == SPACE_IMAGE) {
-    SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
-    cursor = sima->cursor;
-  }
-  if (t->spacetype == SPACE_SEQ) {
-    SpaceSeq *sseq = t->area->spacedata.first_as<SpaceSeq>();
-    const float2 cursor_pixel = seq::image_preview_unit_to_px(t->scene, sseq->cursor);
-    copy_v2_v2(cursor_local_buf, cursor_pixel);
-    cursor = cursor_local_buf;
-  }
-  else if (t->spacetype == SPACE_CLIP) {
-    SpaceClip *space_clip = t->area->spacedata.first_as<SpaceClip>();
-    cursor = space_clip->cursor;
-  }
-
-  if (cursor) {
-    if (t->options & CTX_MASK) {
-      float co[2];
-
-      if (t->spacetype == SPACE_IMAGE) {
-        SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
-        BKE_mask_coord_from_image(sima->image, &sima->iuser, co, cursor);
-      }
-      else if (t->spacetype == SPACE_CLIP) {
-        SpaceClip *space_clip = t->area->spacedata.first_as<SpaceClip>();
-        BKE_mask_coord_from_movieclip(space_clip->clip, &space_clip->user, co, cursor);
-      }
-      else {
-        BLI_assert_msg(0, "Shall not happen");
-      }
-
-      r_center[0] = co[0] * t->aspect[0];
-      r_center[1] = co[1] * t->aspect[1];
-    }
-    else if (t->options & CTX_PAINT_CURVE) {
-      if (t->spacetype == SPACE_IMAGE) {
-        r_center[0] = ui::view2d_view_to_region_x(&t->region->v2d, cursor[0]);
-        r_center[1] = ui::view2d_view_to_region_y(&t->region->v2d, cursor[1]);
-      }
-    }
-    else {
-      r_center[0] = cursor[0] * t->aspect[0];
-      r_center[1] = cursor[1] * t->aspect[1];
-    }
-  }
+  r_center[0] = 0.0f;
+  r_center[1] = 0.0f;
 }
 
-void calculateCenterCursorGraph2D(TransInfo *t, float r_center[2])
+void calculateCenterCursorGraph2D(TransInfo * /*t*/, float r_center[2])
 {
-  SpaceGraph *sipo = t->area->spacedata.first_as<SpaceGraph>();
-  Scene *scene = t->scene;
-
-  /* Cursor is combination of current frame, and graph-editor cursor value. */
-  if (sipo->mode == SIPO_MODE_DRIVERS) {
-    r_center[0] = sipo->cursorTime;
-    r_center[1] = sipo->cursorVal;
-  }
-  else {
-    r_center[0] = float(scene->r.cfra);
-    r_center[1] = sipo->cursorVal;
-  }
+  r_center[0] = 0.0f;
+  r_center[1] = 0.0f;
 }
 
 static bool transdata_center_global_get(const TransDataContainer *tc,
@@ -1116,23 +969,6 @@ bool calculateCenterActive(TransInfo *t, bool select_only, float r_center[3])
       mul_m4_v3(tc->obedit->object_to_world().ptr(), r_center);
       return true;
     }
-  }
-  else if (t->options & CTX_POSE_BONE) {
-    BKE_view_layer_synced_ensure(*t->bmain, t->scene, t->view_layer);
-    Object *ob = BKE_view_layer_active_object_get(t->view_layer);
-    if (object::calc_active_center_for_posemode(ob, select_only, r_center)) {
-      mul_m4_v3(ob->object_to_world().ptr(), r_center);
-      return true;
-    }
-  }
-  else if (t->options & CTX_PAINT_CURVE) {
-    Paint *paint = BKE_paint_get_active(*t->bmain, t->scene, t->view_layer);
-    Brush *br = BKE_paint_brush(paint);
-    PaintCurve *pc = br->paint_curve;
-    copy_v3_v3(r_center, pc->points[pc->add_index - 1].bez.vec[1]);
-    BKE_brush_tag_unsaved_changes(br);
-    r_center[2] = 0.0f;
-    return true;
   }
   else {
     /* Object mode. */
@@ -1507,27 +1343,6 @@ void transform_data_ext_rotate(TransData *td,
     /* Apply. */
     copy_v3_v3(td_ext->rot, eul);
   }
-}
-
-Object *transform_object_deform_pose_armature_get(const TransInfo *t, Object *ob)
-{
-  if (!(ob->mode & OB_MODE_ALL_WEIGHT_PAINT)) {
-    return nullptr;
-  }
-  /* Important that ob_armature can be set even when its not selected #23412.
-   * Lines below just check is also visible. */
-  Object *ob_armature = BKE_modifiers_is_deformed_by_armature(ob);
-  if (ob_armature && ob_armature->mode & OB_MODE_POSE) {
-    BKE_view_layer_synced_ensure(*t->bmain, t->scene, t->view_layer);
-    Base *base_arm = BKE_view_layer_base_find(t->view_layer, ob_armature);
-    if (base_arm) {
-      View3D *v3d = static_cast<View3D *>(t->view);
-      if (BASE_VISIBLE(v3d, base_arm)) {
-        return ob_armature;
-      }
-    }
-  }
-  return nullptr;
 }
 
 std::optional<float3> mouse_delta_to_world_dir(const TransInfo *t, const float2 &delta)

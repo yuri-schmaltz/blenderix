@@ -34,7 +34,6 @@
 #include "obj_export_mtl.hh"
 #include "obj_import_file_reader.hh"
 #include "obj_import_mesh.hh"
-#include "obj_import_nurbs.hh"
 #include "obj_import_objects.hh"
 #include "obj_importer.hh"
 
@@ -101,11 +100,6 @@ static void geometry_to_blender_geometry_set(const OBJImportParams &import_param
       Mesh *mesh = mesh_ob_from_geometry.create_mesh(import_params);
       geometry_set = bke::GeometrySet::from_mesh(mesh);
     }
-    else if (geometry->geom_type_ == GEOM_CURVE) {
-      CurveFromGeometry curve_ob_from_geometry(*geometry, global_vertices);
-      Curves *curves_id = curve_ob_from_geometry.create_curve(import_params);
-      geometry_set = bke::GeometrySet::from_curves(curves_id);
-    }
 
     geometry_set.set_name(geometry->geometry_name_);
     geometries.append(std::move(geometry_set));
@@ -144,10 +138,6 @@ static void geometry_to_blender_objects(Main *bmain,
       MeshFromGeometry mesh_ob_from_geometry{*geometry, global_vertices};
       obj = mesh_ob_from_geometry.create_mesh_object(
           bmain, materials, created_materials, import_params);
-    }
-    else if (geometry->geom_type_ == GEOM_CURVE) {
-      CurveFromGeometry curve_ob_from_geometry(*geometry, global_vertices);
-      obj = curve_ob_from_geometry.create_curve_object(bmain, import_params);
     }
     if (obj != nullptr) {
       Collection *target_collection = find_or_create_collection(

@@ -7,6 +7,14 @@
 # macros.cmake).
 set(SRC
   blender_test.cc
+  ../../../source/creator/mesh_only_runtime_stubs.cc
+)
+
+set(INC
+  ../../../source/blender/blenkernel
+  ../../../source/blender/blenlib
+  ../../../source/blender/editors/include
+  ../../../source/blender/makesdna
 )
 
 if(WITH_BUILDINFO)
@@ -33,6 +41,7 @@ blender_src_gtest_ex(
   SRC "${SRC}"
   EXTRA_LIBS "${TEST_LIBS}"
 )
+blender_target_include_dirs(blender_test ${INC})
 setup_platform_linker_libs(blender_test)
 
 if(WIN32)

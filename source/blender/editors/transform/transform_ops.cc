@@ -41,7 +41,6 @@
 #include "ED_screen.hh"
 /** For #USE_LOOPSLIDE_HACK only. */
 #include "ED_mesh.hh"
-#include "ED_sequencer.hh"
 
 #include "transform.hh"
 #include "transform_convert.hh"
@@ -68,16 +67,13 @@ static const char OP_SHEAR[] = "TRANSFORM_OT_shear";
 static const char OP_BEND[] = "TRANSFORM_OT_bend";
 static const char OP_SHRINK_FATTEN[] = "TRANSFORM_OT_shrink_fatten";
 static const char OP_PUSH_PULL[] = "TRANSFORM_OT_push_pull";
-static const char OP_TILT[] = "TRANSFORM_OT_tilt";
 static const char OP_TRACKBALL[] = "TRANSFORM_OT_trackball";
 static const char OP_MIRROR[] = "TRANSFORM_OT_mirror";
-static const char OP_BONE_SIZE[] = "TRANSFORM_OT_bbone_resize";
 static const char OP_EDGE_SLIDE[] = "TRANSFORM_OT_edge_slide";
 static const char OP_VERT_SLIDE[] = "TRANSFORM_OT_vert_slide";
 static const char OP_EDGE_CREASE[] = "TRANSFORM_OT_edge_crease";
 static const char OP_VERT_CREASE[] = "TRANSFORM_OT_vert_crease";
 static const char OP_EDGE_BWEIGHT[] = "TRANSFORM_OT_edge_bevelweight";
-static const char OP_SEQ_SLIDE[] = "TRANSFORM_OT_seq_slide";
 static const char OP_NORMAL_ROTATION[] = "TRANSFORM_OT_rotate_normal";
 
 static void TRANSFORM_OT_translate(wmOperatorType *ot);
@@ -89,16 +85,13 @@ static void TRANSFORM_OT_shear(wmOperatorType *ot);
 static void TRANSFORM_OT_bend(wmOperatorType *ot);
 static void TRANSFORM_OT_shrink_fatten(wmOperatorType *ot);
 static void TRANSFORM_OT_push_pull(wmOperatorType *ot);
-static void TRANSFORM_OT_tilt(wmOperatorType *ot);
 static void TRANSFORM_OT_trackball(wmOperatorType *ot);
 static void TRANSFORM_OT_mirror(wmOperatorType *ot);
-static void TRANSFORM_OT_bbone_resize(wmOperatorType *ot);
 static void TRANSFORM_OT_edge_slide(wmOperatorType *ot);
 static void TRANSFORM_OT_vert_slide(wmOperatorType *ot);
 static void TRANSFORM_OT_edge_crease(wmOperatorType *ot);
 static void TRANSFORM_OT_vert_crease(wmOperatorType *ot);
 static void TRANSFORM_OT_edge_bevelweight(wmOperatorType *ot);
-static void TRANSFORM_OT_seq_slide(wmOperatorType *ot);
 static void TRANSFORM_OT_rotate_normal(wmOperatorType *ot);
 
 static TransformModeItem transform_modes[] = {
@@ -111,16 +104,13 @@ static TransformModeItem transform_modes[] = {
     {OP_BEND, TFM_BEND, TRANSFORM_OT_bend},
     {OP_SHRINK_FATTEN, TFM_SHRINKFATTEN, TRANSFORM_OT_shrink_fatten},
     {OP_PUSH_PULL, TFM_PUSHPULL, TRANSFORM_OT_push_pull},
-    {OP_TILT, TFM_TILT, TRANSFORM_OT_tilt},
     {OP_TRACKBALL, TFM_TRACKBALL, TRANSFORM_OT_trackball},
     {OP_MIRROR, TFM_MIRROR, TRANSFORM_OT_mirror},
-    {OP_BONE_SIZE, TFM_BONESIZE, TRANSFORM_OT_bbone_resize},
     {OP_EDGE_SLIDE, TFM_EDGE_SLIDE, TRANSFORM_OT_edge_slide},
     {OP_VERT_SLIDE, TFM_VERT_SLIDE, TRANSFORM_OT_vert_slide},
     {OP_EDGE_CREASE, TFM_EDGE_CREASE, TRANSFORM_OT_edge_crease},
     {OP_VERT_CREASE, TFM_VERT_CREASE, TRANSFORM_OT_vert_crease},
     {OP_EDGE_BWEIGHT, TFM_BWEIGHT, TRANSFORM_OT_edge_bevelweight},
-    {OP_SEQ_SLIDE, TFM_SEQ_SLIDE, TRANSFORM_OT_seq_slide},
     {OP_NORMAL_ROTATION, TFM_NORMAL_ROTATION, TRANSFORM_OT_rotate_normal},
     {nullptr, 0},
 };
@@ -993,49 +983,6 @@ static void TRANSFORM_OT_rotate(wmOperatorType *ot)
                           P_GEO_SNAP | P_GPENCIL_EDIT | P_CENTER);
 }
 
-static bool tilt_poll(bContext *C)
-{
-  Object *obedit = CTX_data_edit_object(C);
-  if (!obedit) {
-    return false;
-  }
-  if (obedit->type == OB_CURVES_LEGACY) {
-    Curve *cu = id_cast<Curve *>(obedit->data);
-    return (cu->flag & CU_3D) && (nullptr != cu->editnurb);
-  }
-  if (obedit->type == OB_CURVES) {
-    return true;
-  }
-  return true;
-}
-
-static void TRANSFORM_OT_tilt(wmOperatorType *ot)
-{
-  /* Identifiers. */
-  ot->name = "Tilt";
-  /* Optional -
-   * "Tilt selected vertices"
-   * "Specify an extra axis rotation for selected vertices of 3D curve". */
-  ot->description = "Tilt selected control vertices of 3D curve";
-  ot->idname = OP_TILT;
-  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_BLOCKING;
-
-  /* API callbacks. */
-  ot->invoke = transform_invoke;
-  ot->exec = transform_exec;
-  ot->modal = transform_modal;
-  ot->cancel = transform_cancel;
-  ot->poll = tilt_poll;
-  ot->poll_property = transform_poll_property;
-
-  RNA_def_float_rotation(
-      ot->srna, "value", 0, nullptr, -FLT_MAX, FLT_MAX, "Angle", "", -M_PI * 2, M_PI * 2);
-
-  WM_operatortype_props_advanced_begin(ot);
-
-  properties_register(ot, P_PROPORTIONAL | P_MIRROR | P_SNAP);
-}
-
 static void TRANSFORM_OT_bend(wmOperatorType *ot)
 {
   /* Identifiers. */
@@ -1189,30 +1136,6 @@ static void TRANSFORM_OT_mirror(wmOperatorType *ot)
   ot->poll_property = transform_poll_property;
 
   properties_register(ot, P_ORIENT_MATRIX | P_CONSTRAINT | P_GPENCIL_EDIT | P_CENTER);
-}
-
-static void TRANSFORM_OT_bbone_resize(wmOperatorType *ot)
-{
-  /* Identifiers. */
-  ot->name = "Scale B-Bone";
-  ot->description = "Scale selected bendy bones display size";
-  ot->idname = OP_BONE_SIZE;
-  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_BLOCKING;
-
-  /* API callbacks. */
-  ot->invoke = transform_invoke;
-  ot->exec = transform_exec;
-  ot->modal = transform_modal;
-  ot->cancel = transform_cancel;
-  ot->poll = ED_operator_object_active_only_from_view_layer;
-  ot->poll_property = transform_poll_property;
-
-  RNA_def_float_translation(
-      ot->srna, "value", 3, VecOne, -FLT_MAX, FLT_MAX, "Display Size", "", -FLT_MAX, FLT_MAX);
-
-  WM_operatortype_props_advanced_begin(ot);
-
-  properties_register(ot, P_ORIENT_MATRIX | P_CONSTRAINT | P_MIRROR);
 }
 
 static void TRANSFORM_OT_edge_slide(wmOperatorType *ot)
@@ -1369,63 +1292,6 @@ static void TRANSFORM_OT_edge_bevelweight(wmOperatorType *ot)
   WM_operatortype_props_advanced_begin(ot);
 
   properties_register(ot, P_SNAP);
-}
-
-static bool seq_slide_poll_property(const bContext * /*C*/,
-                                    wmOperator *op,
-                                    const PropertyRNA *prop)
-{
-  const char *prop_id = RNA_property_identifier(prop);
-  if (STR_ELEM(prop_id, "all_channels", "markers", "insert")) {
-    return RNA_enum_get(op->ptr, "overlap_mode") == SEQ_OVERLAP_RIPPLE;
-  }
-  return true;
-}
-
-static void TRANSFORM_OT_seq_slide(wmOperatorType *ot)
-{
-  /* Identifiers. */
-  ot->name = "Sequence Slide";
-  ot->description = "Slide a sequence strip in time";
-  ot->idname = OP_SEQ_SLIDE;
-  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_BLOCKING;
-
-  /* API callbacks. */
-  ot->invoke = transform_invoke;
-  ot->exec = transform_exec;
-  ot->modal = transform_modal;
-  ot->cancel = transform_cancel;
-  ot->poll = ED_operator_sequencer_active;
-  ot->poll_property = seq_slide_poll_property;
-
-  /* Properties. */
-  PropertyRNA *prop;
-
-  prop = RNA_def_float_vector(
-      ot->srna, "value", 2, nullptr, -FLT_MAX, FLT_MAX, "Offset", "", -FLT_MAX, FLT_MAX);
-  RNA_def_property_ui_range(prop, -FLT_MAX, FLT_MAX, 100, 0);
-
-  prop = RNA_def_boolean(ot->srna,
-                         "use_restore_handle_selection",
-                         false,
-                         "Restore Handle Selection",
-                         "Restore handle selection after tweaking");
-  RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
-
-  prop = RNA_def_enum(ot->srna,
-                      "overlap_mode",
-                      rna_enum_strip_overlap_mode_items,
-                      SEQ_OVERLAP_SHUFFLE,
-                      "Overlap Mode",
-                      "How to resolve overlap after transformation");
-  RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-
-  vse::operator_properties_ripple(
-      ot, SEQ_RIPPLE_ALL_CHANNELS | SEQ_RIPPLE_MARKERS | SEQ_RIPPLE_INSERT);
-
-  WM_operatortype_props_advanced_begin(ot);
-
-  properties_register(ot, P_OPTIONS | P_SNAP | P_VIEW2D_EDGE_PAN);
 }
 
 static void TRANSFORM_OT_rotate_normal(wmOperatorType *ot)

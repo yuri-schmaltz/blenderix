@@ -779,9 +779,6 @@ static void gather_realize_tasks_recursive(GatherTasksInfo &gather_info,
                                            const float4x4 &base_transform,
                                            const InstanceContext &base_instance_context)
 {
-  if (geometry_set.has_bundle()) {
-    gather_info.r_tasks.bundles.add(geometry_set.bundle());
-  }
   for (const bke::GeometryComponent *component : geometry_set.get_components()) {
     const bke::GeometryComponent::Type type = component->type();
     switch (type) {
@@ -805,63 +802,6 @@ static void gather_realize_tasks_recursive(GatherTasksInfo &gather_info,
         }
         break;
       }
-      case bke::GeometryComponent::Type::PointCloud: {
-        const auto &pointcloud_component = *static_cast<const bke::PointCloudComponent *>(
-            component);
-        const PointCloud *pointcloud = pointcloud_component.get();
-        if (pointcloud != nullptr) {
-          const int pointcloud_index = gather_info.pointclouds.order.index_of(pointcloud);
-          const PointCloudRealizeInfo &pointcloud_info =
-              gather_info.pointclouds.realize_info[pointcloud_index];
-          gather_info.r_tasks.pointcloud_tasks.append(
-              {int(gather_info.r_offsets.pointcloud_offset),
-               &pointcloud_info,
-               base_transform,
-               base_instance_context.pointclouds,
-               base_instance_context.id});
-          gather_info.r_offsets.pointcloud_offset += pointcloud->totpoint;
-        }
-        break;
-      }
-      case bke::GeometryComponent::Type::Curve: {
-        const auto &curve_component = *static_cast<const bke::CurveComponent *>(component);
-        const Curves *curves = curve_component.get();
-        if (curves != nullptr && curves->geometry.curve_num > 0) {
-          const int curve_index = gather_info.curves.order.index_of(curves);
-          const RealizeCurveInfo &curve_info = gather_info.curves.realize_info[curve_index];
-          gather_info.r_tasks.curve_tasks.append(
-              {{int(gather_info.r_offsets.curves_offsets.point),
-                int(gather_info.r_offsets.curves_offsets.curve),
-                int(gather_info.r_offsets.curves_offsets.custom_knot),
-                int(gather_info.r_offsets.curves_offsets.fill_id)},
-               &curve_info,
-               base_transform,
-               base_instance_context.curves,
-               base_instance_context.id});
-          gather_info.r_offsets.curves_offsets.point += curves->geometry.point_num;
-          gather_info.r_offsets.curves_offsets.curve += curves->geometry.curve_num;
-          gather_info.r_offsets.curves_offsets.custom_knot += curves->geometry.custom_knot_num;
-          gather_info.r_offsets.curves_offsets.fill_id += curve_info.index_by_fill_id.size();
-        }
-        break;
-      }
-      case bke::GeometryComponent::Type::GreasePencil: {
-        const auto &grease_pencil_component = *static_cast<const bke::GreasePencilComponent *>(
-            component);
-        const GreasePencil *grease_pencil = grease_pencil_component.get();
-        if (grease_pencil != nullptr && !grease_pencil->layers().is_empty()) {
-          const int grease_pencil_index = gather_info.grease_pencils.order.index_of(grease_pencil);
-          const GreasePencilRealizeInfo &grease_pencil_info =
-              gather_info.grease_pencils.realize_info[grease_pencil_index];
-          gather_info.r_tasks.grease_pencil_tasks.append(
-              {int(gather_info.r_offsets.grease_pencil_layer_offset),
-               &grease_pencil_info,
-               base_transform,
-               base_instance_context.grease_pencils});
-          gather_info.r_offsets.grease_pencil_layer_offset += grease_pencil->layers().size();
-        }
-        break;
-      }
       case bke::GeometryComponent::Type::Instance: {
         if (current_depth == target_depth) {
           gather_info.instances.attribute_fallback.append(base_instance_context.instances);
@@ -882,24 +822,8 @@ static void gather_realize_tasks_recursive(GatherTasksInfo &gather_info,
         }
         break;
       }
-      case bke::GeometryComponent::Type::Volume: {
-        if (!gather_info.r_tasks.first_volume) {
-          const bke::VolumeComponent *volume_component = static_cast<const bke::VolumeComponent *>(
-              component);
-          volume_component->add_user();
-          gather_info.r_tasks.first_volume = ImplicitSharingPtr<const bke::VolumeComponent>(
-              volume_component);
-        }
+      default:
         break;
-      }
-      case bke::GeometryComponent::Type::Edit: {
-        const auto *edit_component = static_cast<const bke::GeometryComponentEditData *>(
-            component);
-        if (edit_component->gizmo_edit_hints_ || edit_component->curves_edit_hints_) {
-          gather_info.r_tasks.edit_data_tasks.append({edit_component, base_transform});
-        }
-        break;
-      }
     }
   }
 }
@@ -1234,132 +1158,11 @@ static void execute_instances_tasks(
 /** \name Point Cloud
  * \{ */
 
-static OrderedAttributes gather_generic_pointcloud_attributes_to_propagate(
-    const bke::GeometrySet &in_geometry_set,
-    const RealizeInstancesOptions &options,
-    const VariedDepthOptions &varied_depth_option,
-    bool &r_create_radii,
-    bool &r_create_id)
+static AllPointCloudsInfo preprocess_pointclouds(const bke::GeometrySet & /*geometry_set*/,
+                                                 const RealizeInstancesOptions & /*options*/,
+                                                 const VariedDepthOptions & /*varied_depth_option*/)
 {
-  bke::GeometrySet::GatheredAttributes attributes_to_propagate = gather_attributes_to_propagate(
-      in_geometry_set, bke::GeometryComponent::Type::PointCloud, options, varied_depth_option);
-  OrderedAttributes ordered_attributes;
-  for (const int i : attributes_to_propagate.names.index_range()) {
-    if (attributes_to_propagate.names[i] == "position") {
-      continue;
-    }
-    if (attributes_to_propagate.names[i] == "id") {
-      r_create_id = true;
-      continue;
-    }
-    if (attributes_to_propagate.names[i] == "radius") {
-      r_create_radii = true;
-      continue;
-    }
-    ordered_attributes.names.add_new(attributes_to_propagate.names[i]);
-    ordered_attributes.kinds.append(attributes_to_propagate.kinds[i]);
-  }
-  return ordered_attributes;
-}
-
-static void gather_pointclouds_to_realize(const bke::GeometrySet &geometry_set,
-                                          VectorSet<const PointCloud *> &r_pointclouds)
-{
-  if (const PointCloud *pointcloud = geometry_set.get_pointcloud()) {
-    r_pointclouds.add(pointcloud);
-  }
-  if (const Instances *instances = geometry_set.get_instances()) {
-    instances->foreach_referenced_geometry([&](const bke::GeometrySet &instance_geometry_set) {
-      gather_pointclouds_to_realize(instance_geometry_set, r_pointclouds);
-    });
-  }
-}
-
-static AllPointCloudsInfo preprocess_pointclouds(const bke::GeometrySet &geometry_set,
-                                                 const RealizeInstancesOptions &options,
-                                                 const VariedDepthOptions &varied_depth_option)
-{
-  PRF_scope(ProfileCategory::Default);
-  AllPointCloudsInfo info;
-  info.attributes = gather_generic_pointcloud_attributes_to_propagate(geometry_set,
-                                                                      options,
-                                                                      varied_depth_option,
-                                                                      info.create_radius_attribute,
-                                                                      info.create_id_attribute);
-
-  gather_pointclouds_to_realize(geometry_set, info.order);
-  info.realize_info.reinitialize(info.order.size());
-  for (const int pointcloud_index : info.realize_info.index_range()) {
-    PointCloudRealizeInfo &pointcloud_info = info.realize_info[pointcloud_index];
-    const PointCloud *pointcloud = info.order[pointcloud_index];
-    pointcloud_info.pointcloud = pointcloud;
-
-    /* Access attributes. */
-    bke::AttributeAccessor attributes = pointcloud->attributes();
-    pointcloud_info.attributes.reinitialize(info.attributes.size());
-    for (const int attribute_index : info.attributes.index_range()) {
-      const StringRef name = info.attributes.names[attribute_index];
-      const bke::AttrType data_type = info.attributes.kinds[attribute_index].data_type;
-      const bke::AttrDomain domain = info.attributes.kinds[attribute_index].domain;
-      if (attributes.contains(name)) {
-        GVArray attribute = *attributes.lookup_or_default(name, domain, data_type);
-        pointcloud_info.attributes[attribute_index].emplace(std::move(attribute));
-      }
-    }
-    if (info.create_id_attribute) {
-      bke::GAttributeReader ids_attribute = attributes.lookup("id");
-      if (ids_attribute && ids_attribute.domain == bke::AttrDomain::Point &&
-          ids_attribute.varray.type().is<int>())
-      {
-        pointcloud_info.stored_ids = ids_attribute.varray.typed<int>();
-      }
-    }
-    if (info.create_radius_attribute) {
-      pointcloud_info.radii = *attributes.lookup_or_default(
-          "radius", bke::AttrDomain::Point, 0.01f);
-    }
-    const VArray<float3> position_attribute = *attributes.lookup_or_default<float3>(
-        "position", bke::AttrDomain::Point, float3(0));
-    pointcloud_info.positions = position_attribute.get_internal_span();
-  }
-  return info;
-}
-
-static void execute_realize_pointcloud_task(
-    const RealizeInstancesOptions &options,
-    const RealizePointCloudTask &task,
-    const OrderedAttributes &ordered_attributes,
-    MutableSpan<GSpanAttributeWriter> dst_attribute_writers,
-    MutableSpan<float> all_dst_radii,
-    MutableSpan<int> all_dst_ids,
-    MutableSpan<float3> all_dst_positions)
-{
-  const PointCloudRealizeInfo &pointcloud_info = *task.pointcloud_info;
-  const PointCloud &pointcloud = *pointcloud_info.pointcloud;
-  const IndexRange point_slice{task.start_index, pointcloud.totpoint};
-
-  math::transform_points(
-      pointcloud_info.positions, task.transform, all_dst_positions.slice(point_slice));
-
-  /* Create point ids. */
-  if (!all_dst_ids.is_empty()) {
-    create_result_ids(
-        options, pointcloud_info.stored_ids, task.id, all_dst_ids.slice(point_slice));
-  }
-  if (!all_dst_radii.is_empty()) {
-    pointcloud_info.radii.materialize(all_dst_radii.slice(point_slice));
-  }
-
-  copy_generic_attributes_to_result(
-      pointcloud_info.attributes,
-      task.attribute_fallbacks,
-      ordered_attributes,
-      [&](const bke::AttrDomain domain) {
-        BLI_assert(domain == bke::AttrDomain::Point);
-        UNUSED_VARS_NDEBUG(domain);
-        return point_slice;
-      },
-      dst_attribute_writers);
+  return {};
 }
 
 static void add_instance_attributes_to_single_geometry(
@@ -1382,114 +1185,13 @@ static void add_instance_attributes_to_single_geometry(
   }
 }
 
-static void execute_realize_pointcloud_tasks(const RealizeInstancesOptions &options,
-                                             const GatherOffsets &offsets,
-                                             const AllPointCloudsInfo &all_pointclouds_info,
-                                             const Span<RealizePointCloudTask> tasks,
-                                             const OrderedAttributes &ordered_attributes,
-                                             RealizeInstancesResult &r_result)
+static void execute_realize_pointcloud_tasks(const RealizeInstancesOptions & /*options*/,
+                                             const GatherOffsets & /*offsets*/,
+                                             const AllPointCloudsInfo & /*all_pointclouds_info*/,
+                                             const Span<RealizePointCloudTask> /*tasks*/,
+                                             const OrderedAttributes & /*ordered_attributes*/,
+                                             RealizeInstancesResult & /*r_result*/)
 {
-  if (tasks.is_empty()) {
-    return;
-  }
-
-  PRF_scope(ProfileCategory::Default);
-  if (tasks.size() == 1) {
-    const RealizePointCloudTask &task = tasks.first();
-    PointCloud *new_points = BKE_pointcloud_copy_for_eval(task.pointcloud_info->pointcloud);
-    if (!skip_transform(task.transform)) {
-      math::transform_points(task.transform, new_points->positions_for_write());
-      new_points->tag_positions_changed();
-    }
-    add_instance_attributes_to_single_geometry(
-        ordered_attributes, task.attribute_fallbacks, new_points->attributes_for_write());
-    r_result.geometry.replace_pointcloud(new_points);
-    return;
-  }
-
-  const int64_t tot_points = offsets.pointcloud_offset;
-  if (!valid_int_num(tot_points)) {
-    r_result.errors.append(RPT_("Realized point cloud has too many points."));
-    return;
-  }
-
-  /* Allocate new point cloud. */
-  const RealizePointCloudTask &first_task = tasks.first();
-  const PointCloud &first_pointcloud = *first_task.pointcloud_info->pointcloud;
-  PointCloud *dst_pointcloud = BKE_pointcloud_new_nomain(first_pointcloud.type, tot_points);
-  r_result.geometry.replace_pointcloud(dst_pointcloud);
-  bke::MutableAttributeAccessor dst_attributes = dst_pointcloud->attributes_for_write();
-
-  dst_pointcloud->mat = MEM_dupalloc(first_pointcloud.mat);
-  dst_pointcloud->totcol = first_pointcloud.totcol;
-
-  SpanAttributeWriter<float3> positions = dst_attributes.ensure_for_write_only_span<float3>(
-      "position", bke::AttrDomain::Point);
-
-  /* Prepare id attribute. */
-  SpanAttributeWriter<int> point_ids;
-  if (all_pointclouds_info.create_id_attribute) {
-    point_ids = dst_attributes.ensure_for_write_only_span<int>("id", bke::AttrDomain::Point);
-  }
-  SpanAttributeWriter<float> point_radii;
-  if (all_pointclouds_info.create_radius_attribute) {
-    point_radii = dst_attributes.ensure_for_write_only_span<float>("radius",
-                                                                   bke::AttrDomain::Point);
-  }
-
-  /* Prepare generic output attributes. */
-  Vector<GSpanAttributeWriter> dst_attribute_writers;
-  for (const int attribute_index : ordered_attributes.index_range()) {
-    const StringRef name = ordered_attributes.names[attribute_index];
-    const bke::AttrType data_type = ordered_attributes.kinds[attribute_index].data_type;
-    if (try_join_single_value_attribute(
-            tasks.size(),
-            ordered_attributes,
-            [&](const int task_index) -> TaskAttrInfo {
-              return {.attributes = tasks[task_index].pointcloud_info->attributes,
-                      .fallbacks = tasks[task_index].attribute_fallbacks};
-            },
-            attribute_index,
-            dst_attributes))
-    {
-      dst_attribute_writers.append({});
-      continue;
-    }
-    /* Append even on failure, writers must stay aligned with the ordered attributes. */
-    dst_attribute_writers.append(
-        dst_attributes.lookup_or_add_for_write_only_span(name, bke::AttrDomain::Point, data_type));
-  }
-
-  /* Actually execute all tasks. */
-  threading::parallel_for(
-      tasks.index_range(),
-      4096,
-      [&](const IndexRange task_range) {
-        for (const int task_index : task_range) {
-          const RealizePointCloudTask &task = tasks[task_index];
-          execute_realize_pointcloud_task(options,
-                                          task,
-                                          ordered_attributes,
-                                          dst_attribute_writers,
-                                          point_radii.span,
-                                          point_ids.span,
-                                          positions.span);
-        }
-      },
-      threading::accumulated_task_sizes([&](const IndexRange task_range) {
-        const RealizePointCloudTask &task_begin = tasks[task_range.first()];
-        const RealizePointCloudTask &task_end = tasks[task_range.last()];
-        return task_end.start_index + task_end.pointcloud_info->pointcloud->totpoint -
-               task_begin.start_index;
-      }));
-
-  /* Tag modified attributes. */
-  for (GSpanAttributeWriter &dst_attribute : dst_attribute_writers) {
-    dst_attribute.finish();
-  }
-  positions.finish();
-  point_radii.finish();
-  point_ids.finish();
 }
 
 /** \} */
@@ -2201,437 +1903,25 @@ static void execute_realize_mesh_tasks(const RealizeInstancesOptions &options,
 /** \name Curves
  * \{ */
 
-static OrderedAttributes gather_generic_curve_attributes_to_propagate(
-    const bke::GeometrySet &in_geometry_set,
-    const RealizeInstancesOptions &options,
-    const VariedDepthOptions &varied_depth_option,
-    bool &r_create_id,
-    bool &r_create_fill_id)
+static AllCurvesInfo preprocess_curves(const bke::GeometrySet & /*geometry_set*/,
+                                       const RealizeInstancesOptions & /*options*/,
+                                       const VariedDepthOptions & /*varied_depth_option*/)
 {
-  bke::GeometrySet::GatheredAttributes attributes_to_propagate = gather_attributes_to_propagate(
-      in_geometry_set, bke::GeometryComponent::Type::Curve, options, varied_depth_option);
-  OrderedAttributes ordered_attributes;
-  for (const int i : attributes_to_propagate.names.index_range()) {
-    if (ELEM(attributes_to_propagate.names[i],
-             "position",
-             "radius",
-             "handle_left",
-             "handle_right",
-             "custom_normal"))
-    {
-      continue;
-    }
-    if (attributes_to_propagate.names[i] == "id") {
-      r_create_id = true;
-      continue;
-    }
-    if (attributes_to_propagate.names[i] == "fill_id") {
-      r_create_fill_id = true;
-      continue;
-    }
-    ordered_attributes.names.add_new(attributes_to_propagate.names[i]);
-    ordered_attributes.kinds.append(attributes_to_propagate.kinds[i]);
-  }
-  return ordered_attributes;
+  return {};
 }
 
-static void gather_curves_to_realize(const bke::GeometrySet &geometry_set,
-                                     VectorSet<const Curves *> &r_curves)
+static void initialize_curves_builtin_attribute_defaults(
+    const AllCurvesInfo & /*all_curves_info*/, InstanceContext & /*attribute_fallbacks*/)
 {
-  if (const Curves *curves = geometry_set.get_curves()) {
-    if (curves->geometry.curve_num != 0) {
-      r_curves.add(curves);
-    }
-  }
-  if (const Instances *instances = geometry_set.get_instances()) {
-    instances->foreach_referenced_geometry([&](const bke::GeometrySet &instance_geometry_set) {
-      gather_curves_to_realize(instance_geometry_set, r_curves);
-    });
-  }
 }
 
-static AllCurvesInfo preprocess_curves(const bke::GeometrySet &geometry_set,
-                                       const RealizeInstancesOptions &options,
-                                       const VariedDepthOptions &varied_depth_option)
+static void execute_realize_curve_tasks(const RealizeInstancesOptions & /*options*/,
+                                        const GatherOffsets & /*offsets*/,
+                                        const AllCurvesInfo & /*all_curves_info*/,
+                                        const Span<RealizeCurveTask> /*tasks*/,
+                                        const OrderedAttributes & /*ordered_attributes*/,
+                                        RealizeInstancesResult & /*r_result*/)
 {
-  PRF_scope(ProfileCategory::Default);
-  AllCurvesInfo info;
-  info.attributes = gather_generic_curve_attributes_to_propagate(geometry_set,
-                                                                 options,
-                                                                 varied_depth_option,
-                                                                 info.create_id_attribute,
-                                                                 info.create_fill_id_attribute);
-
-  gather_curves_to_realize(geometry_set, info.order);
-  info.realize_info.reinitialize(info.order.size());
-  for (const int curve_index : info.realize_info.index_range()) {
-    RealizeCurveInfo &curve_info = info.realize_info[curve_index];
-    const Curves *curves_id = info.order[curve_index];
-    const bke::CurvesGeometry &curves = curves_id->geometry.wrap();
-    curve_info.curves = curves_id;
-
-    /* Access attributes. */
-    bke::AttributeAccessor attributes = curves.attributes();
-    curve_info.attributes.reinitialize(info.attributes.size());
-    for (const int attribute_index : info.attributes.index_range()) {
-      const bke::AttrDomain domain = info.attributes.kinds[attribute_index].domain;
-      const StringRef name = info.attributes.names[attribute_index];
-      const bke::AttrType data_type = info.attributes.kinds[attribute_index].data_type;
-      if (attributes.contains(name)) {
-        GVArray attribute = *attributes.lookup_or_default(name, domain, data_type);
-        curve_info.attributes[attribute_index].emplace(std::move(attribute));
-      }
-    }
-    if (info.create_id_attribute) {
-      bke::GAttributeReader id_attribute = attributes.lookup("id");
-      if (id_attribute && id_attribute.domain == bke::AttrDomain::Point &&
-          id_attribute.varray.type().is<int>())
-      {
-        curve_info.stored_ids = id_attribute.varray.typed<int>();
-      }
-    }
-    if (info.create_fill_id_attribute) {
-      bke::GAttributeReader fill_id_attribute = attributes.lookup("fill_id");
-      if (fill_id_attribute && fill_id_attribute.domain == bke::AttrDomain::Curve &&
-          fill_id_attribute.varray.type().is<int>())
-      {
-        curve_info.stored_fill_ids = fill_id_attribute.varray.typed<int>();
-        curve_info.index_by_fill_id = gather_all_fill_ids(curve_info.stored_fill_ids);
-      }
-    }
-
-    if (attributes.contains("radius")) {
-      curve_info.radius = *attributes.lookup<float>("radius", bke::AttrDomain::Point);
-      info.create_radius_attribute = true;
-    }
-    if (attributes.contains("handle_right")) {
-      curve_info.handle_left = attributes.lookup<float3>("handle_left", bke::AttrDomain::Point)
-                                   .varray.get_internal_span();
-      curve_info.handle_right = attributes.lookup<float3>("handle_right", bke::AttrDomain::Point)
-                                    .varray.get_internal_span();
-      info.create_handle_postion_attributes = true;
-    }
-    if (attributes.contains("custom_normal")) {
-      curve_info.custom_normal = attributes.lookup<float3>("custom_normal", bke::AttrDomain::Point)
-                                     .varray.get_internal_span();
-      info.create_custom_normal_attribute = true;
-    }
-  }
-  return info;
-}
-
-static void initialize_curves_builtin_attribute_defaults(const AllCurvesInfo &all_curves_info,
-                                                         InstanceContext &attribute_fallbacks)
-{
-  if (all_curves_info.order.is_empty()) {
-    return;
-  }
-  const Curves *first = all_curves_info.order[0];
-  const bke::CurvesGeometry &first_curves = first->geometry.wrap();
-  for (const int attribute_i : attribute_fallbacks.curves.array.index_range()) {
-    const StringRef name = all_curves_info.attributes.names[attribute_i];
-    if (first_curves.attributes().is_builtin(name)) {
-      attribute_fallbacks.curves.array[attribute_i] =
-          first_curves.attributes().get_builtin_default(name).get();
-    }
-  }
-}
-
-static void execute_realize_curve_task(const RealizeInstancesOptions &options,
-                                       const AllCurvesInfo &all_curves_info,
-                                       const RealizeCurveTask &task,
-                                       const OrderedAttributes &ordered_attributes,
-                                       bke::CurvesGeometry &dst_curves,
-                                       MutableSpan<GSpanAttributeWriter> dst_attribute_writers,
-                                       MutableSpan<int> all_dst_ids,
-                                       MutableSpan<int> all_dst_fill_ids,
-                                       MutableSpan<float3> all_handle_left,
-                                       MutableSpan<float3> all_handle_right,
-                                       MutableSpan<float> all_radii,
-                                       MutableSpan<float3> all_custom_normals)
-{
-  const RealizeCurveInfo &curves_info = *task.curve_info;
-  const Curves &curves_id = *curves_info.curves;
-  const bke::CurvesGeometry &curves = curves_id.geometry.wrap();
-
-  const IndexRange dst_point_range{task.start_indices.point, curves.points_num()};
-  const IndexRange dst_curve_range{task.start_indices.curve, curves.curves_num()};
-  const IndexRange dst_custom_knot_range{task.start_indices.custom_knot,
-                                         curves.nurbs_custom_knots_by_curve().total_size()};
-
-  math::transform_points(
-      curves.positions(), task.transform, dst_curves.positions_for_write().slice(dst_point_range));
-
-  /* Copy and transform handle positions if necessary. */
-  if (all_curves_info.create_handle_postion_attributes) {
-    if (curves_info.handle_left.is_empty()) {
-      all_handle_left.slice(dst_point_range).fill(float3(0));
-    }
-    else {
-      math::transform_points(
-          curves_info.handle_left, task.transform, all_handle_left.slice(dst_point_range));
-    }
-    if (curves_info.handle_right.is_empty()) {
-      all_handle_right.slice(dst_point_range).fill(float3(0));
-    }
-    else {
-      math::transform_points(
-          curves_info.handle_right, task.transform, all_handle_right.slice(dst_point_range));
-    }
-  }
-
-  if (all_curves_info.create_radius_attribute) {
-    if (curves_info.radius.is_empty()) {
-      all_radii.slice(dst_point_range).fill(1.0f);
-    }
-    else {
-      curves_info.radius.materialize(all_radii.slice(dst_point_range));
-    }
-  }
-
-  if (all_curves_info.create_custom_normal_attribute) {
-    if (curves_info.custom_normal.is_empty()) {
-      all_custom_normals.slice(dst_point_range).fill(float3(0, 0, 1));
-    }
-    else {
-      math::transform_normals(curves_info.custom_normal,
-                              float3x3(task.transform),
-                              all_custom_normals.slice(dst_point_range));
-    }
-  }
-
-  /* Copy curve offsets. */
-  const Span<int> src_offsets = curves.offsets();
-  const MutableSpan<int> dst_offsets = dst_curves.offsets_for_write().slice(dst_curve_range);
-  array_utils::copy_ints_with_offset(
-      src_offsets.take_front(dst_offsets.size()), task.start_indices.point, dst_offsets);
-
-  dst_curves.nurbs_custom_knots_for_write()
-      .slice(dst_custom_knot_range)
-      .copy_from(curves.nurbs_custom_knots());
-
-  if (!all_dst_ids.is_empty()) {
-    create_result_ids(
-        options, curves_info.stored_ids, task.id, all_dst_ids.slice(dst_point_range));
-  }
-
-  if (!all_dst_fill_ids.is_empty()) {
-    MutableSpan<int> dst_fill_ids = all_dst_fill_ids.slice(dst_curve_range);
-    const VArray<int> &src_fill_ids = curves_info.stored_fill_ids;
-    const VectorSet<int> &index_by_fill_id = curves_info.index_by_fill_id;
-
-    if (src_fill_ids.is_empty() || index_by_fill_id.is_empty()) {
-      dst_fill_ids.fill(0);
-    }
-    else {
-      threading::parallel_for(curves.curves_range(), 2048, [&](const IndexRange range) {
-        for (const int i : range) {
-          const int src_fill_id = src_fill_ids[i];
-          if (src_fill_id == 0) {
-            dst_fill_ids[i] = 0;
-          }
-          else {
-            /* Use the index of the source fill ID to create new IDs. */
-            const int fill_id_index = index_by_fill_id.index_of(src_fill_id);
-            /* Valid fill IDs must not be 0, so start at 1. */
-            dst_fill_ids[i] = task.start_indices.fill_id + fill_id_index + 1;
-          }
-        }
-      });
-    }
-  }
-
-  copy_generic_attributes_to_result(
-      curves_info.attributes,
-      task.attribute_fallbacks,
-      ordered_attributes,
-      [&](const bke::AttrDomain domain) {
-        switch (domain) {
-          case bke::AttrDomain::Point:
-            return IndexRange(task.start_indices.point, curves.points_num());
-          case bke::AttrDomain::Curve:
-            return IndexRange(task.start_indices.curve, curves.curves_num());
-          default:
-            BLI_assert_unreachable();
-            return IndexRange();
-        }
-      },
-      dst_attribute_writers);
-}
-
-static void copy_vertex_group_names(CurvesGeometry &dst_curve,
-                                    const OrderedAttributes &ordered_attributes,
-                                    const Span<const Curves *> src_curves)
-{
-  Set<StringRef> existing_names;
-  for (const bDeformGroup &defgroup : dst_curve.vertex_group_names) {
-    existing_names.add(defgroup.name);
-  }
-  for (const Curves *src_curve : src_curves) {
-    for (const bDeformGroup &src : src_curve->geometry.vertex_group_names) {
-      if (!existing_names.add(src.name)) {
-        continue;
-      }
-      copy_vertex_group_name(&dst_curve.vertex_group_names, ordered_attributes, src);
-      existing_names.add(src.name);
-    }
-  }
-}
-
-static void execute_realize_curve_tasks(const RealizeInstancesOptions &options,
-                                        const GatherOffsets &offsets,
-                                        const AllCurvesInfo &all_curves_info,
-                                        const Span<RealizeCurveTask> tasks,
-                                        const OrderedAttributes &ordered_attributes,
-                                        RealizeInstancesResult &r_result)
-{
-  if (tasks.is_empty()) {
-    return;
-  }
-
-  PRF_scope(ProfileCategory::Default);
-  if (tasks.size() == 1) {
-    const RealizeCurveTask &task = tasks.first();
-    Curves *new_curves = BKE_curves_copy_for_eval(task.curve_info->curves);
-    if (!skip_transform(task.transform)) {
-      new_curves->geometry.wrap().transform(task.transform);
-    }
-    add_instance_attributes_to_single_geometry(ordered_attributes,
-                                               task.attribute_fallbacks,
-                                               new_curves->geometry.wrap().attributes_for_write());
-    r_result.geometry.replace_curves(new_curves);
-    return;
-  }
-
-  const int64_t points_num = offsets.curves_offsets.point;
-  const int64_t curves_num = offsets.curves_offsets.curve;
-  const int64_t custom_knot_num = offsets.curves_offsets.custom_knot;
-
-  if (!valid_int_num(points_num) || !valid_int_num(curves_num) || !valid_int_num(custom_knot_num))
-  {
-    r_result.errors.append(RPT_("Realized curves data has too many elements."));
-    return;
-  }
-
-  /* Allocate new curves data-block. */
-  Curves *dst_curves_id = bke::curves_new_nomain(points_num, curves_num);
-  bke::CurvesGeometry &dst_curves = dst_curves_id->geometry.wrap();
-  if (custom_knot_num) {
-    dst_curves.nurbs_custom_knots_resize(custom_knot_num);
-  }
-  dst_curves.offsets_for_write().last() = points_num;
-  r_result.geometry.replace_curves(dst_curves_id);
-  bke::MutableAttributeAccessor dst_attributes = dst_curves.attributes_for_write();
-
-  /* Copy settings from the first input geometry set with curves. */
-  const RealizeCurveTask &first_task = tasks.first();
-  const Curves &first_curves_id = *first_task.curve_info->curves;
-  bke::curves_copy_parameters(first_curves_id, *dst_curves_id);
-
-  copy_vertex_group_names(dst_curves, ordered_attributes, all_curves_info.order);
-
-  /* Prepare id attribute. */
-  SpanAttributeWriter<int> point_ids;
-  if (all_curves_info.create_id_attribute) {
-    point_ids = dst_attributes.ensure_for_write_only_span<int>("id", bke::AttrDomain::Point);
-  }
-
-  /* Prepare fill id attribute. */
-  SpanAttributeWriter<int> fill_ids;
-  if (all_curves_info.create_fill_id_attribute) {
-    fill_ids = dst_attributes.ensure_for_write_only_span<int>("fill_id", bke::AttrDomain::Curve);
-  }
-
-  /* Prepare generic output attributes. */
-  Vector<GSpanAttributeWriter> dst_attribute_writers;
-  for (const int attribute_index : ordered_attributes.index_range()) {
-    const StringRef name = ordered_attributes.names[attribute_index];
-    const bke::AttrDomain domain = ordered_attributes.kinds[attribute_index].domain;
-    const bke::AttrType data_type = ordered_attributes.kinds[attribute_index].data_type;
-    if (try_join_single_value_attribute(
-            tasks.size(),
-            ordered_attributes,
-            [&](const int task_index) -> TaskAttrInfo {
-              return {.attributes = tasks[task_index].curve_info->attributes,
-                      .fallbacks = tasks[task_index].attribute_fallbacks};
-            },
-            attribute_index,
-            dst_attributes))
-    {
-      dst_attribute_writers.append({});
-      continue;
-    }
-    /* Append even on failure, writers must stay aligned with the ordered attributes. */
-    dst_attribute_writers.append(
-        dst_attributes.lookup_or_add_for_write_only_span(name, domain, data_type));
-  }
-
-  /* Prepare handle position attributes if necessary. */
-  SpanAttributeWriter<float3> handle_left;
-  SpanAttributeWriter<float3> handle_right;
-  if (all_curves_info.create_handle_postion_attributes) {
-    handle_left = dst_attributes.ensure_for_write_only_span<float3>("handle_left",
-                                                                    bke::AttrDomain::Point);
-    handle_right = dst_attributes.ensure_for_write_only_span<float3>("handle_right",
-                                                                     bke::AttrDomain::Point);
-  }
-
-  SpanAttributeWriter<float> radius;
-  if (all_curves_info.create_radius_attribute) {
-    radius = dst_attributes.ensure_for_write_only_span<float>("radius", bke::AttrDomain::Point);
-  }
-  SpanAttributeWriter<float3> custom_normal;
-  if (all_curves_info.create_custom_normal_attribute) {
-    custom_normal = dst_attributes.ensure_for_write_only_span<float3>("custom_normal",
-                                                                      bke::AttrDomain::Point);
-  }
-
-  threading::parallel_for(
-      tasks.index_range(),
-      4096,
-      [&](const IndexRange task_range) {
-        for (const int task_index : task_range) {
-          const RealizeCurveTask &task = tasks[task_index];
-          execute_realize_curve_task(options,
-                                     all_curves_info,
-                                     task,
-                                     ordered_attributes,
-                                     dst_curves,
-                                     dst_attribute_writers,
-                                     point_ids.span,
-                                     fill_ids.span,
-                                     handle_left.span,
-                                     handle_right.span,
-                                     radius.span,
-                                     custom_normal.span);
-        }
-      },
-      threading::accumulated_task_sizes([&](const IndexRange task_range) {
-        const RealizeCurveTask &task_begin = tasks[task_range.first()];
-        const RealizeCurveTask &task_end = tasks[task_range.last()];
-        return task_end.start_indices.point + task_end.curve_info->curves->geometry.point_num -
-               task_begin.start_indices.point;
-      }));
-
-  /* Type counts have to be updated eagerly. */
-  dst_curves.runtime->type_counts.fill(0);
-  for (const RealizeCurveTask &task : tasks) {
-    for (const int i : IndexRange(CURVE_TYPES_NUM)) {
-      dst_curves.runtime->type_counts[i] +=
-          task.curve_info->curves->geometry.runtime->type_counts[i];
-    }
-  }
-
-  /* Tag modified attributes. */
-  for (GSpanAttributeWriter &dst_attribute : dst_attribute_writers) {
-    dst_attribute.finish();
-  }
-  point_ids.finish();
-  fill_ids.finish();
-  radius.finish();
-  handle_left.finish();
-  handle_right.finish();
-  custom_normal.finish();
 }
 
 /** \} */
@@ -2640,224 +1930,21 @@ static void execute_realize_curve_tasks(const RealizeInstancesOptions &options,
 /** \name Grease Pencil
  * \{ */
 
-static OrderedAttributes gather_generic_grease_pencil_attributes_to_propagate(
-    const bke::GeometrySet &in_geometry_set,
-    const RealizeInstancesOptions &options,
-    const VariedDepthOptions &varied_depth_options)
-{
-  bke::GeometrySet::GatheredAttributes attributes_to_propagate = gather_attributes_to_propagate(
-      in_geometry_set, bke::GeometryComponent::Type::GreasePencil, options, varied_depth_options);
-  OrderedAttributes ordered_attributes;
-  for (const int i : attributes_to_propagate.names.index_range()) {
-    ordered_attributes.names.add_new(attributes_to_propagate.names[i]);
-    ordered_attributes.kinds.append(attributes_to_propagate.kinds[i]);
-  }
-  return ordered_attributes;
-}
-
-static void gather_grease_pencils_to_realize(const bke::GeometrySet &geometry_set,
-                                             VectorSet<const GreasePencil *> &r_grease_pencils)
-{
-  if (const GreasePencil *grease_pencil = geometry_set.get_grease_pencil()) {
-    if (!grease_pencil->layers().is_empty()) {
-      r_grease_pencils.add(grease_pencil);
-    }
-  }
-  if (const Instances *instances = geometry_set.get_instances()) {
-    instances->foreach_referenced_geometry([&](const bke::GeometrySet &instance_geometry_set) {
-      gather_grease_pencils_to_realize(instance_geometry_set, r_grease_pencils);
-    });
-  }
-}
-
 static AllGreasePencilsInfo preprocess_grease_pencils(
-    const bke::GeometrySet &geometry_set,
-    const RealizeInstancesOptions &options,
-    const VariedDepthOptions &varied_depth_options)
+    const bke::GeometrySet & /*geometry_set*/,
+    const RealizeInstancesOptions & /*options*/,
+    const VariedDepthOptions & /*varied_depth_options*/)
 {
-  PRF_scope(ProfileCategory::Default);
-  AllGreasePencilsInfo info;
-  info.attributes = gather_generic_grease_pencil_attributes_to_propagate(
-      geometry_set, options, varied_depth_options);
-
-  gather_grease_pencils_to_realize(geometry_set, info.order);
-  info.realize_info.reinitialize(info.order.size());
-  for (const int grease_pencil_index : info.realize_info.index_range()) {
-    GreasePencilRealizeInfo &grease_pencil_info = info.realize_info[grease_pencil_index];
-    const GreasePencil *grease_pencil = info.order[grease_pencil_index];
-    grease_pencil_info.grease_pencil = grease_pencil;
-
-    bke::AttributeAccessor attributes = grease_pencil->attributes();
-    grease_pencil_info.attributes.reinitialize(info.attributes.size());
-    for (const int attribute_index : info.attributes.index_range()) {
-      const StringRef name = info.attributes.names[attribute_index];
-      const bke::AttrType data_type = info.attributes.kinds[attribute_index].data_type;
-      const bke::AttrDomain domain = info.attributes.kinds[attribute_index].domain;
-      if (attributes.contains(name)) {
-        GVArray attribute = *attributes.lookup_or_default(name, domain, data_type);
-        grease_pencil_info.attributes[attribute_index].emplace(std::move(attribute));
-      }
-    }
-
-    grease_pencil_info.material_index_map.reinitialize(grease_pencil->material_array_num);
-    for (const int i : IndexRange(grease_pencil->material_array_num)) {
-      Material *material = grease_pencil->material_array[i];
-      grease_pencil_info.material_index_map[i] = info.materials.index_of_or_add(material);
-    }
-  }
-  return info;
-}
-
-static void execute_realize_grease_pencil_task(
-    const RealizeGreasePencilTask &task,
-    const OrderedAttributes &ordered_attributes,
-    GreasePencil &dst_grease_pencil,
-    MutableSpan<GSpanAttributeWriter> dst_attribute_writers)
-{
-  const GreasePencilRealizeInfo &grease_pencil_info = *task.grease_pencil_info;
-  const GreasePencil &src_grease_pencil = *grease_pencil_info.grease_pencil;
-  const Span<const bke::greasepencil::Layer *> src_layers = src_grease_pencil.layers();
-  const IndexRange dst_layers_slice{task.start_index, src_layers.size()};
-  const Span<bke::greasepencil::Layer *> dst_layers = dst_grease_pencil.layers_for_write().slice(
-      dst_layers_slice);
-
-  for (const int layer_i : src_layers.index_range()) {
-    const bke::greasepencil::Layer &src_layer = *src_layers[layer_i];
-    bke::greasepencil::Layer &dst_layer = *dst_layers[layer_i];
-    BKE_grease_pencil_copy_layer_parameters(src_layer, dst_layer);
-
-    dst_layer.set_name(src_layer.name());
-    dst_layer.set_local_transform(task.transform * src_layer.local_transform());
-
-    const bke::greasepencil::Drawing *src_drawing = src_grease_pencil.get_eval_drawing(src_layer);
-    if (!src_drawing) {
-      continue;
-    }
-    bke::greasepencil::Drawing &dst_drawing = *dst_grease_pencil.get_eval_drawing(dst_layer);
-
-    const bke::CurvesGeometry &src_curves = src_drawing->strokes();
-    bke::CurvesGeometry &dst_curves = dst_drawing.strokes_for_write();
-    dst_curves = src_curves;
-
-    /* Remap materials. */
-    bke::MutableAttributeAccessor dst_attributes = dst_curves.attributes_for_write();
-    bke::SpanAttributeWriter<int> material_indices = dst_attributes.ensure_for_write_span<int>(
-        "material_index", bke::AttrDomain::Curve);
-    for (int &material_index : material_indices.span) {
-      if (material_index >= 0 && material_index < src_grease_pencil.material_array_num) {
-        material_index = grease_pencil_info.material_index_map[material_index];
-      }
-    }
-    material_indices.finish();
-  }
-
-  copy_generic_attributes_to_result(
-      grease_pencil_info.attributes,
-      task.attribute_fallbacks,
-      ordered_attributes,
-      [&](const bke::AttrDomain domain) {
-        BLI_assert(domain == bke::AttrDomain::Layer);
-        UNUSED_VARS_NDEBUG(domain);
-        return dst_layers_slice;
-      },
-      dst_attribute_writers);
-}
-
-static void transform_grease_pencil_layers(Span<bke::greasepencil::Layer *> layers,
-                                           const float4x4 &transform)
-{
-  for (bke::greasepencil::Layer *layer : layers) {
-    layer->set_local_transform(transform * layer->local_transform());
-  }
+  return {};
 }
 
 static void execute_realize_grease_pencil_tasks(
-    const AllGreasePencilsInfo &all_grease_pencils_info,
-    const GatherOffsets &offsets,
-    const Span<RealizeGreasePencilTask> tasks,
-    const OrderedAttributes &ordered_attributes,
-    RealizeInstancesResult &r_result)
+    const AllGreasePencilsInfo & /*all_grease_pencils_info*/,
+    const GatherOffsets & /*offsets*/,
+    const Span<RealizeGreasePencilTask> /*tasks*/,
+    const OrderedAttributes & /*ordered_attributes*/,
+    RealizeInstancesResult & /*r_result*/)
 {
-  if (tasks.is_empty()) {
-    return;
-  }
-
-  PRF_scope(ProfileCategory::Default);
-  if (tasks.size() == 1) {
-    const RealizeGreasePencilTask &task = tasks.first();
-    GreasePencil *new_gp = BKE_grease_pencil_copy_for_eval(task.grease_pencil_info->grease_pencil);
-    if (!skip_transform(task.transform)) {
-      transform_grease_pencil_layers(new_gp->layers_for_write(), task.transform);
-    }
-    add_instance_attributes_to_single_geometry(
-        ordered_attributes, task.attribute_fallbacks, new_gp->attributes_for_write());
-    r_result.geometry.replace_grease_pencil(new_gp);
-    return;
-  }
-
-  const int64_t new_layers_num = offsets.grease_pencil_layer_offset;
-  if (!valid_int_num(new_layers_num)) {
-    r_result.errors.append(RPT_("Realized grease pencil has too many layers."));
-    return;
-  }
-
-  /* Allocate new grease pencil. */
-  GreasePencil *dst_grease_pencil = BKE_grease_pencil_new_nomain();
-  BKE_grease_pencil_copy_parameters(*tasks.first().grease_pencil_info->grease_pencil,
-                                    *dst_grease_pencil);
-  r_result.geometry.replace_grease_pencil(dst_grease_pencil);
-
-  /* Allocate all layers. */
-  dst_grease_pencil->add_layers_with_empty_drawings_for_eval(new_layers_num);
-
-  /* Transfer material pointers. The material indices are updated for each task separately. */
-  if (!all_grease_pencils_info.materials.is_empty()) {
-    MEM_SAFE_DELETE(dst_grease_pencil->material_array);
-    dst_grease_pencil->material_array_num = all_grease_pencils_info.materials.size();
-    dst_grease_pencil->material_array = MEM_new_array_zeroed<Material *>(
-        dst_grease_pencil->material_array_num, __func__);
-    uninitialized_copy_n(all_grease_pencils_info.materials.data(),
-                         dst_grease_pencil->material_array_num,
-                         dst_grease_pencil->material_array);
-  }
-
-  /* Prepare generic output attributes. */
-  bke::MutableAttributeAccessor dst_attributes = dst_grease_pencil->attributes_for_write();
-  Vector<GSpanAttributeWriter> dst_attribute_writers;
-  for (const int attribute_index : ordered_attributes.index_range()) {
-    const StringRef name = ordered_attributes.names[attribute_index];
-    const bke::AttrType data_type = ordered_attributes.kinds[attribute_index].data_type;
-    if (try_join_single_value_attribute(
-            tasks.size(),
-            ordered_attributes,
-            [&](const int task_index) -> TaskAttrInfo {
-              return {.attributes = tasks[task_index].grease_pencil_info->attributes,
-                      .fallbacks = tasks[task_index].attribute_fallbacks};
-            },
-            attribute_index,
-            dst_attributes))
-    {
-      dst_attribute_writers.append({});
-      continue;
-    }
-    /* Append even on failure, writers must stay aligned with the ordered attributes. */
-    dst_attribute_writers.append(
-        dst_attributes.lookup_or_add_for_write_only_span(name, bke::AttrDomain::Layer, data_type));
-  }
-
-  /* Actually execute all tasks. */
-  threading::parallel_for(tasks.index_range(), 100, [&](const IndexRange task_range) {
-    for (const int task_index : task_range) {
-      const RealizeGreasePencilTask &task = tasks[task_index];
-      execute_realize_grease_pencil_task(
-          task, ordered_attributes, *dst_grease_pencil, dst_attribute_writers);
-    }
-  });
-
-  /* Tag modified attributes. */
-  for (GSpanAttributeWriter &dst_attribute : dst_attribute_writers) {
-    dst_attribute.finish();
-  }
 }
 
 /** \} */
@@ -2876,12 +1963,6 @@ static void execute_realize_edit_data_tasks(const Span<RealizeEditDataTask> task
   PRF_scope(ProfileCategory::Default);
   auto &component = r_realized_geometry.get_component_for_write<bke::GeometryComponentEditData>();
   for (const RealizeEditDataTask &task : tasks) {
-    if (!component.curves_edit_hints_) {
-      if (task.edit_data->curves_edit_hints_) {
-        component.curves_edit_hints_ = std::make_unique<bke::CurvesEditHints>(
-            *task.edit_data->curves_edit_hints_);
-      }
-    }
     if (const bke::GizmoEditHints *src_gizmo_edit_hints = task.edit_data->gizmo_edit_hints_.get())
     {
       if (!component.gizmo_edit_hints_) {
@@ -3064,9 +2145,6 @@ RealizeInstancesResult realize_instances(bke::GeometrySet geometry_set,
   });
   if (gather_info.r_tasks.first_volume) {
     result.geometry.add(*gather_info.r_tasks.first_volume);
-  }
-  for (const nodes::Bundle *bundle : gather_info.r_tasks.bundles) {
-    result.geometry.bundle_for_write().merge(*bundle);
   }
 
   return result;

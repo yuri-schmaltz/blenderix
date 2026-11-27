@@ -10,10 +10,7 @@ set(INC
   ../editors/space_view3d
   ../gpu/intern
   ../makesrna
-  ../render/intern
   ../compositor
-  ../compositor/cached_resources
-  ../compositor/derived_resources
 
   ../../../intern/opensubdiv
 )

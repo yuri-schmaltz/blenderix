@@ -1162,8 +1162,6 @@ void transform_data_ext_rotate(TransData *td,
                                float mat[3][3],
                                bool use_drot);
 
-Object *transform_object_deform_pose_armature_get(const TransInfo *t, Object *ob);
-
 void freeCustomNormalArray(TransInfo *t, TransDataContainer *tc, TransCustomData *custom_data);
 
 /* TODO: move to: `transform_query.c`. */

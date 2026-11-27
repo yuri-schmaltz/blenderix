@@ -16,23 +16,14 @@
 #include "BKE_editmesh.hh"
 #include "BKE_global.hh"
 #include "BKE_layer.hh"
-#include "BKE_mask.hh"
 #include "BKE_screen.hh"
 #include "BKE_view3d_runtime.hh"
 #include "BKE_workspace.hh"
 
 #include "GPU_state.hh"
 
-#include "ED_clip.hh"
-#include "ED_image.hh"
 #include "ED_screen.hh"
 #include "ED_space_api.hh"
-#include "ED_uvedit.hh"
-
-#include "ANIM_keyframing.hh"
-
-#include "SEQ_sequencer.hh"
-#include "SEQ_transform.hh"
 
 #include "WM_api.hh"
 #include "WM_message.hh"
@@ -115,78 +106,9 @@ void setTransformViewMatrices(TransInfo *t)
   SET_FLAG_FROM_TEST(t->flag, is_negative_m4(t->viewmat), T_VIEW_NEGATIVE);
 }
 
-void setTransformViewAspect(TransInfo *t, float r_aspect[3])
+void setTransformViewAspect(TransInfo * /*t*/, float r_aspect[3])
 {
   copy_v3_fl(r_aspect, 1.0f);
-
-  if (t->spacetype == SPACE_IMAGE) {
-    SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
-
-    if (t->options & CTX_MASK) {
-      ED_space_image_get_aspect(sima, &r_aspect[0], &r_aspect[1]);
-    }
-    else if (t->options & CTX_PAINT_CURVE) {
-      /* Pass. */
-    }
-    else {
-      ED_space_image_get_uv_aspect(sima, &r_aspect[0], &r_aspect[1]);
-    }
-  }
-  else if (t->spacetype == SPACE_SEQ) {
-    if (t->options & CTX_CURSOR) {
-      Scene *scene = CTX_data_sequencer_scene(t->context);
-      const float2 aspect = seq::image_preview_unit_to_px(scene, r_aspect);
-      copy_v2_v2(r_aspect, aspect);
-    }
-  }
-  else if (t->spacetype == SPACE_CLIP) {
-    SpaceClip *sclip = t->area->spacedata.first_as<SpaceClip>();
-
-    if (t->options & CTX_MOVIECLIP) {
-      ED_space_clip_get_aspect_dimension_aware(sclip, &r_aspect[0], &r_aspect[1]);
-    }
-    else {
-      ED_space_clip_get_aspect(sclip, &r_aspect[0], &r_aspect[1]);
-    }
-  }
-  else if (t->spacetype == SPACE_GRAPH) {
-    /* Depends on context of usage. */
-  }
-}
-
-static void convertViewVec2D(View2D *v2d, float r_vec[3], int dx, int dy)
-{
-  float divx = BLI_rcti_size_x(&v2d->mask);
-  float divy = BLI_rcti_size_y(&v2d->mask);
-
-  r_vec[0] = BLI_rctf_size_x(&v2d->cur) * dx / divx;
-  r_vec[1] = BLI_rctf_size_y(&v2d->cur) * dy / divy;
-  r_vec[2] = 0.0f;
-}
-
-static void convertViewVec2D_mask(View2D *v2d, float r_vec[3], int dx, int dy)
-{
-  float divx = BLI_rcti_size_x(&v2d->mask);
-  float divy = BLI_rcti_size_y(&v2d->mask);
-
-  float mulx = BLI_rctf_size_x(&v2d->cur);
-  float muly = BLI_rctf_size_y(&v2d->cur);
-
-  /* Difference with #convertViewVec2D. */
-  /* Clamp w/h, mask only. */
-  if (mulx / divx < muly / divy) {
-    divy = divx;
-    muly = mulx;
-  }
-  else {
-    divx = divy;
-    mulx = muly;
-  }
-  /* End difference. */
-
-  r_vec[0] = mulx * dx / divx;
-  r_vec[1] = muly * dy / divy;
-  r_vec[2] = 0.0f;
 }
 
 void convertViewVec(TransInfo *t, float r_vec[3], double dx, double dy)
@@ -200,38 +122,6 @@ void convertViewVec(TransInfo *t, float r_vec[3], double dx, double dy)
       const float xy_delta[2] = {float(dx), float(dy)};
       ED_view3d_win_to_delta(t->region, xy_delta, t->zfac, r_vec);
     }
-  }
-  else if (t->spacetype == SPACE_IMAGE) {
-    if (t->options & CTX_MASK) {
-      convertViewVec2D_mask(static_cast<View2D *>(t->view), r_vec, dx, dy);
-    }
-    else if (t->options & CTX_PAINT_CURVE) {
-      r_vec[0] = dx;
-      r_vec[1] = dy;
-    }
-    else {
-      convertViewVec2D(static_cast<View2D *>(t->view), r_vec, dx, dy);
-    }
-
-    r_vec[0] *= t->aspect[0];
-    r_vec[1] *= t->aspect[1];
-  }
-  else if (ELEM(t->spacetype, SPACE_GRAPH, SPACE_NLA)) {
-    convertViewVec2D(static_cast<View2D *>(t->view), r_vec, dx, dy);
-  }
-  else if (ELEM(t->spacetype, SPACE_NODE, SPACE_SEQ)) {
-    convertViewVec2D(&t->region->v2d, r_vec, dx, dy);
-  }
-  else if (t->spacetype == SPACE_CLIP) {
-    if (t->options & CTX_MASK) {
-      convertViewVec2D_mask(static_cast<View2D *>(t->view), r_vec, dx, dy);
-    }
-    else {
-      convertViewVec2D(static_cast<View2D *>(t->view), r_vec, dx, dy);
-    }
-
-    r_vec[0] *= t->aspect[0];
-    r_vec[1] *= t->aspect[1];
   }
   else {
     printf("%s: called in an invalid context\n", __func__);
@@ -307,126 +197,9 @@ void projectIntViewEx(TransInfo *t, const float vec[3], int adr[2], const eV3DPr
       }
     }
   }
-  else if (t->spacetype == SPACE_IMAGE) {
-    SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
-
-    if (t->options & CTX_MASK) {
-      float v[2];
-
-      v[0] = vec[0] / t->aspect[0];
-      v[1] = vec[1] / t->aspect[1];
-
-      BKE_mask_coord_to_image(sima->image, &sima->iuser, v, v);
-
-      ED_image_point_pos__reverse(sima, t->region, v, v);
-
-      adr[0] = v[0];
-      adr[1] = v[1];
-    }
-    else if (t->options & CTX_PAINT_CURVE) {
-      adr[0] = vec[0];
-      adr[1] = vec[1];
-    }
-    else {
-      if (t->view) {
-        const float v[2] = {
-            vec[0] / t->aspect[0],
-            vec[1] / t->aspect[1],
-        };
-        ui::view2d_view_to_region(
-            static_cast<const View2D *>(t->view), v[0], v[1], &adr[0], &adr[1]);
-      }
-      else {
-        adr[0] = 0;
-        adr[1] = 0;
-      }
-    }
-  }
-  else if (t->spacetype == SPACE_ACTION) {
-    int out[2] = {0, 0};
-#if 0
-    SpaceAction *sact = t->area->spacedata.first;
-
-    if (sact->flag & SACTION_DRAWTIME) {
-      // vec[0] = vec[0] / ((t->scene->r.frs_sec / t->scene->r.frs_sec_base));
-      /* Same as below. */
-      ui::view2d_view_to_region((View2D *)t->view, vec[0], vec[1], &out[0], &out[1]);
-    }
-    else
-#endif
-    if (t->view) {
-      ui::view2d_view_to_region(static_cast<View2D *>(t->view), vec[0], vec[1], &out[0], &out[1]);
-    }
-
-    adr[0] = out[0];
-    adr[1] = out[1];
-  }
-  else if (ELEM(t->spacetype, SPACE_GRAPH, SPACE_NLA)) {
-    int out[2] = {0, 0};
-    if (t->view) {
-      ui::view2d_view_to_region(static_cast<View2D *>(t->view), vec[0], vec[1], &out[0], &out[1]);
-    }
-    adr[0] = out[0];
-    adr[1] = out[1];
-  }
-  else if (t->spacetype == SPACE_SEQ) { /* XXX not tested yet, but should work. */
-    int out[2] = {0, 0};
-    if (t->view) {
-      ui::view2d_view_to_region(static_cast<View2D *>(t->view), vec[0], vec[1], &out[0], &out[1]);
-    }
-    adr[0] = out[0];
-    adr[1] = out[1];
-  }
-  else if (t->spacetype == SPACE_CLIP) {
-    SpaceClip *sc = t->area->spacedata.first_as<SpaceClip>();
-
-    if (t->options & CTX_MASK) {
-      MovieClip *clip = ED_space_clip_get_clip(sc);
-
-      if (clip) {
-        float v[2];
-
-        v[0] = vec[0] / t->aspect[0];
-        v[1] = vec[1] / t->aspect[1];
-
-        BKE_mask_coord_to_movieclip(sc->clip, &sc->user, v, v);
-
-        ED_clip_point_stable_pos__reverse(sc, t->region, v, v);
-
-        adr[0] = v[0];
-        adr[1] = v[1];
-      }
-      else {
-        adr[0] = 0;
-        adr[1] = 0;
-      }
-    }
-    else if (t->options & CTX_MOVIECLIP) {
-      if (t->view) {
-        const float v[2] = {
-            vec[0] / t->aspect[0],
-            vec[1] / t->aspect[1],
-        };
-        ui::view2d_view_to_region(
-            static_cast<const View2D *>(t->view), v[0], v[1], &adr[0], &adr[1]);
-      }
-      else {
-        adr[0] = 0;
-        adr[1] = 0;
-      }
-    }
-    else {
-      BLI_assert(0);
-    }
-  }
-  else if (t->spacetype == SPACE_NODE) {
-    if (t->view) {
-      ui::view2d_view_to_region(static_cast<View2D *>(t->view), vec[0], vec[1], &adr[0], &adr[1]);
-    }
-    else {
-      adr[0] = 0;
-      adr[1] = 0;
-    }
+  else {
+    adr[0] = 0;
+    adr[1] = 0;
   }
 }
 void projectIntView(TransInfo *t, const float vec[3], int adr[2])
@@ -466,149 +239,14 @@ void projectFloatView(TransInfo *t, const float vec[3], float adr[2])
   projectFloatViewEx(t, vec, adr, V3D_PROJ_TEST_NOP);
 }
 
-void applyAspectRatio(TransInfo *t, float vec[2])
-{
-  if ((t->spacetype == SPACE_IMAGE) && (t->mode == TFM_TRANSLATION) &&
-      !(t->options & CTX_PAINT_CURVE))
-  {
-    SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
+void applyAspectRatio(TransInfo * /*t*/, float /*vec*/[2]) {}
 
-    if ((sima->flag & SI_COORDFLOATS) == 0) {
-      int width, height;
-      ED_space_image_get_size(sima, &width, &height);
-
-      vec[0] *= width;
-      vec[1] *= height;
-    }
-
-    vec[0] /= t->aspect[0];
-    vec[1] /= t->aspect[1];
-  }
-  else if ((t->spacetype == SPACE_CLIP) && (t->mode == TFM_TRANSLATION)) {
-    if (t->options & (CTX_MOVIECLIP | CTX_MASK)) {
-      vec[0] /= t->aspect[0];
-      vec[1] /= t->aspect[1];
-    }
-  }
-}
-
-void removeAspectRatio(TransInfo *t, float vec[2])
-{
-  if ((t->spacetype == SPACE_IMAGE) && (t->mode == TFM_TRANSLATION)) {
-    SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
-
-    if ((sima->flag & SI_COORDFLOATS) == 0) {
-      int width, height;
-      ED_space_image_get_size(sima, &width, &height);
-
-      vec[0] /= width;
-      vec[1] /= height;
-    }
-
-    vec[0] *= t->aspect[0];
-    vec[1] *= t->aspect[1];
-  }
-  else if ((t->spacetype == SPACE_CLIP) && (t->mode == TFM_TRANSLATION)) {
-    if (t->options & (CTX_MOVIECLIP | CTX_MASK)) {
-      vec[0] *= t->aspect[0];
-      vec[1] *= t->aspect[1];
-    }
-  }
-}
+void removeAspectRatio(TransInfo * /*t*/, float /*vec*/[2]) {}
 
 static void viewRedrawForce(const bContext *C, TransInfo *t)
 {
-  if (t->options & CTX_GPENCIL_STROKES) {
-    if (t->obedit_type == OB_GREASE_PENCIL) {
-      WM_event_add_notifier(C, NC_GEOM | ND_DATA, nullptr);
-    }
-  }
-  else if (t->spacetype == SPACE_VIEW3D) {
-    if (t->options & CTX_PAINT_CURVE) {
-      wmWindow *window = CTX_wm_window(C);
-      WM_paint_cursor_tag_redraw(window, t->region);
-    }
-    else {
-      /* Do we need more refined tags? */
-      if (t->options & CTX_POSE_BONE) {
-        WM_event_add_notifier(C, NC_OBJECT | ND_POSE, nullptr);
-      }
-      else {
-        WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, nullptr);
-      }
-
-      /* For real-time animation record - send notifiers recognized by animation editors. */
-      /* XXX: is this notifier a lame duck? */
-      if ((t->animtimer) && animrig::is_autokey_on(t->scene)) {
-        WM_event_add_notifier(C, NC_OBJECT | ND_KEYS, nullptr);
-      }
-    }
-  }
-  else if (t->spacetype == SPACE_ACTION) {
-    // SpaceAction *saction = (SpaceAction *)t->area->spacedata.first;
-    WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, nullptr);
-  }
-  else if (t->spacetype == SPACE_GRAPH) {
-    // SpaceGraph *sipo = (SpaceGraph *)t->area->spacedata.first;
-    WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, nullptr);
-  }
-  else if (t->spacetype == SPACE_NLA) {
-    WM_event_add_notifier(C, NC_ANIMATION | ND_NLA | NA_EDITED, nullptr);
-  }
-  else if (t->spacetype == SPACE_NODE) {
-    // ED_area_tag_redraw(t->area);
-    WM_event_add_notifier(C, NC_SPACE | ND_SPACE_NODE_VIEW, nullptr);
-  }
-  else if (t->spacetype == SPACE_SEQ) {
-    WM_event_add_notifier(C, NC_SCENE | ND_SEQUENCER, nullptr);
-    /* Key-frames on strips has been moved, so make sure related editors are informed. */
-    WM_event_add_notifier(C, NC_ANIMATION, nullptr);
-  }
-  else if (t->spacetype == SPACE_IMAGE) {
-    if (t->options & CTX_MASK) {
-      Mask *mask = CTX_data_edit_mask(C);
-
-      WM_event_add_notifier(C, NC_MASK | NA_EDITED, mask);
-    }
-    else if (t->options & CTX_PAINT_CURVE) {
-      wmWindow *window = CTX_wm_window(C);
-      WM_paint_cursor_tag_redraw(window, t->region);
-    }
-    else if (t->options & CTX_CURSOR) {
-      ED_area_tag_redraw(t->area);
-    }
-    else {
-      /* XXX how to deal with lock? */
-      SpaceImage *sima = t->area->spacedata.first_as<SpaceImage>();
-      if (sima->lock) {
-        BKE_view_layer_synced_ensure(*t->bmain, t->scene, t->view_layer);
-        if (Object *ob = BKE_view_layer_edit_object_get(t->view_layer)) {
-          if (ob->type == OB_MESH) {
-            WM_event_add_notifier(C, NC_GEOM | ND_DATA, ob->data);
-          }
-        }
-      }
-      else {
-        ED_area_tag_redraw(t->area);
-      }
-    }
-  }
-  else if (t->spacetype == SPACE_CLIP) {
-    SpaceClip *sc = t->area->spacedata.first_as<SpaceClip>();
-
-    if (ED_space_clip_check_show_trackedit(sc)) {
-      MovieClip *clip = ED_space_clip_get_clip(sc);
-
-      /* Objects could be parented to tracking data, so send this for viewport refresh. */
-      WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, nullptr);
-
-      WM_event_add_notifier(C, NC_MOVIECLIP | NA_EDITED, clip);
-    }
-    else if (ED_space_clip_check_show_maskedit(sc)) {
-      Mask *mask = CTX_data_edit_mask(C);
-
-      WM_event_add_notifier(C, NC_MASK | NA_EDITED, mask);
-    }
+  if (t->spacetype == SPACE_VIEW3D) {
+    WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, nullptr);
   }
 }
 
@@ -621,11 +259,6 @@ static void viewRedrawPost(bContext *C, TransInfo *t)
   }
 
   if (t->spacetype == SPACE_VIEW3D) {
-    /* If auto-keying is enabled, send notifiers that keyframes were added. */
-    if (animrig::is_autokey_on(t->scene)) {
-      WM_main_add_notifier(NC_ANIMATION | ND_KEYFRAME | NA_ADDED, nullptr);
-    }
-
     /* Redraw UV editor. */
     const char uvcalc_correct_flag = ELEM(t->mode, TFM_VERT_SLIDE, TFM_EDGE_SLIDE) ?
                                          UVCALC_TRANSFORM_CORRECT_SLIDE :
@@ -739,29 +372,16 @@ static bool transform_modal_item_poll(const wmOperator *op, int value)
         return false;
       }
       if (value == TFM_MODAL_TRANSLATE && t->mode == TFM_TRANSLATION) {
-        /* The tracking transform in MovieClip has an alternate translate that modifies the offset
-         * of the tracks. */
-        return t->data_type == &TransConvertType_Tracking;
+        return false;
       }
       if (value == TFM_MODAL_ROTATE && t->mode == TFM_ROTATION) {
         return false;
       }
       if (value == TFM_MODAL_RESIZE && t->mode == TFM_RESIZE) {
-        /* The tracking transform in MovieClip has an alternate resize that only affects the
-         * tracker size and not the search area. */
-        return t->data_type == &TransConvertType_Tracking;
+        return false;
       }
       if (value == TFM_MODAL_VERT_EDGE_SLIDE &&
-          (!ELEM(t->data_type, &TransConvertType_Mesh, &TransConvertType_MeshUV) ||
-           /* WORKAROUND: Avoid repeated keys in status bar.
-            *
-            * Previously, `Vert/Edge Slide` and `Move` were triggered by the same modal key.
-            * But now, to fix #100129 (Status bar incorrectly shows "[G] Move"), `Vert/Edge Slide`
-            * has its own modal key. However by default it uses the same key as `Move` (G). So, to
-            * avoid displaying the same key twice (G and G), only display this modal key during the
-            * `Move` operation.
-            *
-            * Ideally we should check if it really uses the same key. */
+          (t->data_type != &TransConvertType_Mesh ||
            t->mode != TFM_TRANSLATION))
       {
         return false;
@@ -813,24 +433,11 @@ static bool transform_modal_item_poll(const wmOperator *op, int value)
       }
       return t->vod != nullptr;
     case TFM_MODAL_STRIP_CLAMP:
-      if (t->spacetype != SPACE_SEQ) {
-        return false;
-      }
-      if (t->data_type == &TransConvertType_SequencerRetiming) {
-        return false;
-      }
-      break;
     case TFM_MODAL_STRIP_OVERLAP_SHUFFLE:
     case TFM_MODAL_STRIP_OVERLAP_RIPPLE:
     case TFM_MODAL_STRIP_OVERLAP_OVERWRITE:
-    case TFM_MODAL_STRIP_RIPPLE_INSERT: {
-      if (t->spacetype != SPACE_SEQ || t->mode != TFM_SEQ_SLIDE ||
-          t->data_type != &TransConvertType_Sequencer)
-      {
-        return false;
-      }
-      break;
-    }
+    case TFM_MODAL_STRIP_RIPPLE_INSERT:
+      return false;
   }
   return true;
 }
@@ -1050,24 +657,6 @@ static bool transform_event_modal_constraint(TransInfo *t, short modal_type)
       return false;
     }
 
-    if (t->data_type == &TransConvertType_SequencerImage) {
-      /* Setup the 2d msg string so it writes out the transform space. */
-      msg_2d = msg_3d;
-
-      short orient_index = 1;
-      if (t->orient_curr == O_DEFAULT || ELEM(constraint_curr, -1, constraint_new)) {
-        /* Successive presses on existing axis, cycle orientation modes. */
-        orient_index = short((t->orient_curr + 1) % int(ARRAY_SIZE(t->orient)));
-      }
-
-      transform_orientations_current_set(t, orient_index);
-      if (orient_index != 0) {
-        /* Make sure that we don't stop the constraint unless we are looped back around to
-         * "no constraint". */
-        constraint_curr = -1;
-      }
-    }
-
     if (constraint_curr == constraint_new) {
       stopConstraint(t);
     }
@@ -1125,11 +714,6 @@ wmOperatorStatus transformEvent(TransInfo *t, wmOperator *op, const wmEvent *eve
   {
     t->redraw |= TREDRAW_HARD;
   }
-  else if (event->type == TIMER) {
-    if (ED_uvedit_live_unwrap_timer_check(static_cast<const wmTimer *>(event->customdata))) {
-      t->redraw |= TREDRAW_HARD;
-    }
-  }
   else if (!is_navigating && event->type == MOUSEMOVE) {
     t->mval = float2(event->mval);
 
@@ -1174,12 +758,6 @@ wmOperatorStatus transformEvent(TransInfo *t, wmOperator *op, const wmEvent *eve
         if ((event->val == TFM_MODAL_TRANSLATE && t->mode == TFM_TRANSLATION) ||
             (event->val == TFM_MODAL_RESIZE && t->mode == TFM_RESIZE))
         {
-          if (t->data_type == &TransConvertType_Tracking) {
-            restoreTransObjects(t);
-
-            t->flag ^= T_ALT_TRANSFORM;
-            t->redraw |= TREDRAW_HARD;
-          }
           break;
         }
 
@@ -1325,47 +903,11 @@ wmOperatorStatus transformEvent(TransInfo *t, wmOperator *op, const wmEvent *eve
         }
         break;
       case TFM_MODAL_AUTOIK_LEN_INC:
-        if (t->flag & T_AUTOIK) {
-          transform_autoik_update(t, 1);
-          t->redraw |= TREDRAW_HARD;
-        }
-        break;
       case TFM_MODAL_AUTOIK_LEN_DEC:
-        if (t->flag & T_AUTOIK) {
-          transform_autoik_update(t, -1);
-          t->redraw |= TREDRAW_HARD;
-        }
-        break;
       case TFM_MODAL_INSERTOFS_TOGGLE_DIR:
-        if (t->spacetype == SPACE_NODE) {
-          SpaceNode *snode = t->area->spacedata.first_as<SpaceNode>();
-
-          BLI_assert(t->area->spacetype == t->spacetype);
-
-          if (snode->insert_ofs_dir == SNODE_INSERTOFS_DIR_RIGHT) {
-            snode->insert_ofs_dir = SNODE_INSERTOFS_DIR_LEFT;
-          }
-          else if (snode->insert_ofs_dir == SNODE_INSERTOFS_DIR_LEFT) {
-            snode->insert_ofs_dir = SNODE_INSERTOFS_DIR_RIGHT;
-          }
-          else {
-            BLI_assert(0);
-          }
-
-          t->redraw |= TREDRAW_SOFT;
-        }
-        break;
       case TFM_MODAL_NODE_ATTACH_ON:
-        t->modifiers |= MOD_NODE_ATTACH;
-        t->redraw |= TREDRAW_HARD;
-        break;
       case TFM_MODAL_NODE_ATTACH_OFF:
-        t->modifiers &= ~MOD_NODE_ATTACH;
-        t->redraw |= TREDRAW_HARD;
-        break;
       case TFM_MODAL_NODE_FRAME:
-        t->modifiers |= MOD_NODE_FRAME;
-        t->redraw |= TREDRAW_HARD;
         break;
 
       case TFM_MODAL_AUTOCONSTRAINT:
@@ -1448,35 +990,11 @@ wmOperatorStatus transformEvent(TransInfo *t, wmOperator *op, const wmEvent *eve
         }
         break;
       case TFM_MODAL_STRIP_CLAMP:
-        t->modifiers ^= MOD_STRIP_CLAMP_HOLDS;
-        t->redraw |= TREDRAW_HARD;
-        break;
       case TFM_MODAL_STRIP_OVERLAP_SHUFFLE:
-        seq::tool_settings_overlap_mode_set(CTX_data_sequencer_scene(t->context),
-                                            SEQ_OVERLAP_SHUFFLE);
-        t->redraw |= TREDRAW_HARD;
-        break;
       case TFM_MODAL_STRIP_OVERLAP_RIPPLE:
-        seq::tool_settings_overlap_mode_set(CTX_data_sequencer_scene(t->context),
-                                            SEQ_OVERLAP_RIPPLE);
-        t->redraw |= TREDRAW_HARD;
-        break;
       case TFM_MODAL_STRIP_OVERLAP_OVERWRITE:
-        seq::tool_settings_overlap_mode_set(CTX_data_sequencer_scene(t->context),
-                                            SEQ_OVERLAP_OVERWRITE);
-        t->redraw |= TREDRAW_HARD;
+      case TFM_MODAL_STRIP_RIPPLE_INSERT:
         break;
-      case TFM_MODAL_STRIP_RIPPLE_INSERT: {
-        Scene *scene = CTX_data_sequencer_scene(t->context);
-        if (seq::tool_settings_overlap_mode_get(CTX_data_sequencer_scene(t->context)) !=
-            SEQ_OVERLAP_RIPPLE)
-        {
-          break;
-        }
-        seq::tool_settings_ensure(scene)->ripple_flag ^= SEQ_RIPPLE_INSERT;
-        t->redraw |= TREDRAW_HARD;
-        break;
-      }
       default:
         break;
     }
@@ -1717,113 +1235,7 @@ static void drawTransformView(const bContext * /*C*/, ARegion *region, void *arg
   }
 }
 
-/**
- * Just draw a little warning message in the top-right corner of the viewport
- * to warn that auto-keying is enabled.
- */
-static void drawAutoKeyWarning(TransInfo *t, ARegion *region)
-{
-  const char *printable = IFACE_("Auto Keying On");
-  float printable_size[2];
-  int xco, yco;
-  int offset = 0;
-
-  const rcti *rect = ED_region_visible_rect(region);
-
-  View3D *v3d = nullptr;
-  Scene *scene = nullptr;
-  if (t->spacetype == SPACE_VIEW3D) {
-    v3d = static_cast<View3D *>(t->view);
-    scene = t->scene;
-  }
-
-  const int font_id = BLF_set_default();
-  BLF_width_and_height(
-      font_id, printable, BLF_DRAW_STR_DUMMY_MAX, &printable_size[0], &printable_size[1]);
-
-  /* Check to see if the Navigation Gizmo is enabled. */
-  if ((t->spacetype != SPACE_VIEW3D) || (v3d == nullptr) ||
-      (v3d->gizmo_flag & (V3D_GIZMO_HIDE | V3D_GIZMO_HIDE_NAVIGATE)))
-  {
-    offset = 10;
-  }
-  else {
-    /* Depending on user MINI_AXIS preference, pad accordingly. */
-    switch (eUserpref_MiniAxisType(U.mini_axis_type)) {
-      case USER_MINI_AXIS_TYPE_GIZMO:
-        offset = U.gizmo_size_navigate_v3d;
-        break;
-      case USER_MINI_AXIS_TYPE_MINIMAL:
-        offset = U.rvisize * std::min((U.pixelsize / U.scale_factor), 1.0f) * 2.5f;
-        break;
-      case USER_MINI_AXIS_TYPE_NONE:
-        offset = U.rvisize;
-        break;
-    }
-  }
-
-  offset *= U.scale_factor;
-
-  xco = (rect->xmax - U.widget_unit) - int(printable_size[0]) - offset;
-  yco = (rect->ymax - U.widget_unit);
-
-  /* Warning text (to clarify meaning of overlays)
-   * - Original color was red to match the icon, but that clashes badly with a less nasty border.
-   */
-
-  float text_color[4], shadow_color[4];
-  if (v3d && scene) {
-    ED_view3d_text_colors_get(scene, v3d, text_color, shadow_color);
-  }
-  else {
-    ui::theme::get_color_4fv(TH_TEXT_HI, text_color);
-    ui::theme::get_color_4fv(TH_BACK, text_color);
-  }
-  BLF_color4fv(BLF_default(), text_color);
-  BLF_shadow(BLF_default(), FontShadowType::Outline, shadow_color);
-  BLF_draw_default(xco, yco, 0.0f, printable, BLF_DRAW_STR_DUMMY_MAX);
-
-  /* Auto-key recording icon. */
-  GPU_blend(GPU_BLEND_ALPHA);
-
-  xco -= U.widget_unit;
-  yco -= int(printable_size[1]) / 2;
-
-  ui::icon_draw(xco, yco, ICON_REC);
-
-  GPU_blend(GPU_BLEND_NONE);
-}
-
-static void drawTransformPixel(const bContext * /*C*/, ARegion *region, void *arg)
-{
-  TransInfo *t = static_cast<TransInfo *>(arg);
-
-  if (!transinfo_show_overlay(t, region)) {
-    return;
-  }
-
-  if (region != t->region) {
-    return;
-  }
-
-  /* Draw auto-key-framing hint in the corner
-   * - only draw if enabled (advanced users may be distracted/annoyed),
-   *   for objects that will be auto-keyframed (no point otherwise),
-   *   AND only for the active region (as showing all is too overwhelming)
-   */
-  if ((U.keying_flag & AUTOKEY_FLAG_NOWARNING) == 0) {
-    if (t->options & (CTX_OBJECT | CTX_POSE_BONE)) {
-      Scene *scene = t->scene;
-      ViewLayer *view_layer = t->view_layer;
-      BKE_view_layer_synced_ensure(*t->bmain, scene, view_layer);
-      Object *ob = BKE_view_layer_active_object_get(view_layer);
-
-      if (ob && animrig::autokeyframe_cfra_can_key(scene, &ob->id)) {
-        drawAutoKeyWarning(t, region);
-      }
-    }
-  }
-}
+static void drawTransformPixel(const bContext * /*C*/, ARegion * /*region*/, void * /*arg*/) {}
 
 /** \} */
 
@@ -2055,20 +1467,6 @@ void saveTransform(bContext *C, TransInfo *t, wmOperator *op)
     RNA_property_boolean_set(
         op->ptr, prop, (t->settings->uvcalc_flag & UVCALC_TRANSFORM_CORRECT_SLIDE) != 0);
   }
-
-  /* Save sequencer ripple settings. */
-  if ((prop = RNA_struct_find_property(op->ptr, "overlap_mode")) &&
-      !RNA_property_is_set(op->ptr, prop))
-  {
-    Scene *scene = CTX_data_sequencer_scene(C);
-    if (scene != nullptr) {
-      const eSeqRippleFlag ripple_flag = seq::tool_settings_ripple_flag_get(scene);
-      RNA_property_enum_set(op->ptr, prop, seq::tool_settings_overlap_mode_get(scene));
-      RNA_boolean_set(op->ptr, "all_channels", (ripple_flag & SEQ_RIPPLE_ALL_CHANNELS) != 0);
-      RNA_boolean_set(op->ptr, "markers", (ripple_flag & SEQ_RIPPLE_MARKERS) != 0);
-      RNA_boolean_set(op->ptr, "insert", (ripple_flag & SEQ_RIPPLE_INSERT) != 0);
-    }
-  }
 }
 
 bool initTransform(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *event, int mode)
@@ -2210,23 +1608,6 @@ bool initTransform(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
             WM_event_modifier_flag_match_kmi_press(event->modifier, &kmi))
         {
           t->modifiers |= MOD_SNAP_INVERT;
-          break;
-        }
-      }
-    }
-    if (t->data_type == &TransConvertType_Node) {
-      /* Set the initial auto-attach flag based on whether the chosen keymap key is pressed at the
-       * start of the operator. */
-      t->modifiers |= MOD_NODE_ATTACH;
-      for (const wmKeyMapItem &kmi : t->keymap->items) {
-        if (kmi.flag & KMI_INACTIVE) {
-          continue;
-        }
-
-        if ((kmi.propvalue == TFM_MODAL_NODE_ATTACH_OFF) &&
-            WM_event_modifier_flag_match_kmi_press(event->modifier, &kmi))
-        {
-          t->modifiers &= ~MOD_NODE_ATTACH;
           break;
         }
       }

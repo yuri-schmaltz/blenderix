@@ -12,9 +12,6 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "DNA_armature_types.h"
-#include "DNA_curve_types.h"
-#include "DNA_meta_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
@@ -30,22 +27,13 @@
 #include "BLI_string_utils.hh"
 #include "BLI_utildefines.hh"
 
-#include "BKE_action.hh"
-#include "BKE_armature.hh"
 #include "BKE_context.hh"
-#include "BKE_curve.hh"
 #include "BKE_editmesh.hh"
 #include "BKE_layer.hh"
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
 
 #include "BLT_translation.hh"
-
-#include "ED_armature.hh"
-
-#include "ANIM_armature.hh"
-#include "ANIM_bone_collections.hh"
-
 
 #include "transform.hh"
 #include "transform_orientations.hh"
@@ -143,50 +131,6 @@ static TransformOrientation *createObjectSpace(bContext *C,
   return addMatrixSpace(C, mat, name, overwrite);
 }
 
-static TransformOrientation *createBoneSpace(bContext *C,
-                                             ReportList *reports,
-                                             const char *name,
-                                             const bool overwrite)
-{
-  float mat[3][3];
-  float normal[3], plane[3];
-
-  getTransformOrientation(C, normal, plane);
-
-  if (createSpaceNormalTangent(mat, normal, plane) == 0) {
-    BKE_reports_prepend(reports, "Cannot use zero-length bone");
-    return nullptr;
-  }
-
-  if (name[0] == 0) {
-    name = DATA_(animrig::bone_default_name);
-  }
-
-  return addMatrixSpace(C, mat, name, overwrite);
-}
-
-static TransformOrientation *createCurveSpace(bContext *C,
-                                              ReportList *reports,
-                                              const char *name,
-                                              const bool overwrite)
-{
-  float mat[3][3];
-  float normal[3], plane[3];
-
-  getTransformOrientation(C, normal, plane);
-
-  if (createSpaceNormalTangent(mat, normal, plane) == 0) {
-    BKE_reports_prepend(reports, "Cannot use zero-length curve");
-    return nullptr;
-  }
-
-  if (name[0] == 0) {
-    name = DATA_("Curve");
-  }
-
-  return addMatrixSpace(C, mat, name, overwrite);
-}
-
 static TransformOrientation *createMeshSpace(bContext *C,
                                              ReportList *reports,
                                              const char *name,
@@ -272,45 +216,6 @@ static void axis_angle_to_gimbal_axis(float gmat[3][3], const float axis[3], con
   copy_v3_v3(gmat[2], axis);
 
   normalize_m3(gmat);
-}
-
-bool gimbal_axis_pose(Object *ob, const bPoseChannel *pchan, float gmat[3][3])
-{
-  float mat[3][3], tmat[3][3], obmat[3][3];
-  if (test_rotmode_euler(pchan->rotmode)) {
-    eulO_to_gimbal_axis(mat, pchan->eul, pchan->rotmode);
-  }
-  else if (pchan->rotmode == ROT_MODE_AXISANGLE) {
-    axis_angle_to_gimbal_axis(mat, pchan->rotAxis, pchan->rotAngle);
-  }
-  else { /* Quaternion. */
-    return false;
-  }
-
-  /* Apply bone transformation. */
-  const Bone *pchan_bone = pchan->bone_get(*ob);
-  mul_m3_m3m3(tmat, pchan_bone->bone_mat, mat);
-
-  if (pchan->parent) {
-    float parent_mat[3][3];
-
-    copy_m3_m4(parent_mat,
-               (pchan_bone->flag & BONE_HINGE) ? pchan_bone->parent->arm_mat :
-                                                 pchan->parent->pose_mat);
-    mul_m3_m3m3(mat, parent_mat, tmat);
-
-    /* Needed if object transformation isn't identity. */
-    copy_m3_m4(obmat, ob->object_to_world().ptr());
-    mul_m3_m3m3(gmat, obmat, mat);
-  }
-  else {
-    /* Needed if object transformation isn't identity. */
-    copy_m3_m4(obmat, ob->object_to_world().ptr());
-    mul_m3_m3m3(gmat, obmat, tmat);
-  }
-
-  normalize_m3(gmat);
-  return true;
 }
 
 bool gimbal_axis_object(Object *ob, float gmat[3][3])
@@ -475,20 +380,10 @@ bool BIF_createTransformOrientation(bContext *C,
   }
   else {
     Object *obedit = CTX_data_edit_object(C);
-    Object *ob = CTX_data_active_object(C);
     if (obedit) {
       if (obedit->type == OB_MESH) {
         ts = createMeshSpace(C, reports, name, overwrite);
       }
-      else if (obedit->type == OB_ARMATURE) {
-        ts = createBoneSpace(C, reports, name, overwrite);
-      }
-      else if (obedit->type == OB_CURVES_LEGACY) {
-        ts = createCurveSpace(C, reports, name, overwrite);
-      }
-    }
-    else if (ob && (ob->mode & OB_MODE_POSE)) {
-      ts = createBoneSpace(C, reports, name, overwrite);
     }
     else {
       ts = createObjectSpace(C, reports, name, overwrite);
@@ -570,48 +465,6 @@ void applyTransformOrientation(const TransformOrientation *ts, float r_mat[3][3]
   copy_m3_m3(r_mat, ts->mat);
 }
 
-static int bone_children_clear_transflag(Object &pose_ob, bPoseChannel &pose_bone)
-{
-  int cleared = 0;
-  animrig::pose_bone_descendent_iterator(pose_ob, pose_bone, [&](bPoseChannel &child) {
-    if (&child == &pose_bone) {
-      return;
-    }
-    if (child.runtime.flag & POSE_RUNTIME_TRANSFORM) {
-      child.runtime.flag &= ~POSE_RUNTIME_TRANSFORM;
-      cleared++;
-    }
-  });
-  return cleared;
-}
-
-/* Updates all `POSE_RUNTIME_TRANSFORM` flags.
- * Returns total number of bones with `POSE_RUNTIME_TRANSFORM`.
- * NOTE: `transform_convert_pose_transflags_update` has a similar logic. */
-static int armature_bone_transflags_update(Object &ob, bArmature *arm, ListBaseT<bPoseChannel> *lb)
-{
-  int total = 0;
-
-  for (bPoseChannel &pchan : *lb) {
-    pchan.runtime.flag &= ~POSE_RUNTIME_TRANSFORM;
-    if (!ANIM_bone_in_visible_collection(arm, pchan.bone_get(ob))) {
-      continue;
-    }
-    if (pchan.flag & POSE_SELECTED) {
-      pchan.runtime.flag |= POSE_RUNTIME_TRANSFORM;
-      total++;
-    }
-  }
-
-  /* No transform on children if any parent bone is selected. */
-  for (bPoseChannel &pchan : *lb) {
-    if (pchan.runtime.flag & POSE_RUNTIME_TRANSFORM) {
-      total -= bone_children_clear_transflag(ob, pchan);
-    }
-  }
-  return total;
-}
-
 void calc_orientation_from_type(const bContext *C, float r_mat[3][3])
 {
   ARegion *region = CTX_wm_region(C);
@@ -628,25 +481,6 @@ void calc_orientation_from_type(const bContext *C, float r_mat[3][3])
 
   calc_orientation_from_type_ex(
       *bmain, scene, view_layer, v3d, rv3d, ob, obedit, orient_index, pivot_point, r_mat);
-}
-
-static void handle_armature_parent_orientation(Object *ob, float r_mat[3][3])
-{
-  bPoseChannel *active_pchan = BKE_pose_channel_active(ob, false);
-
-  /* Check if target bone is a child. */
-  if (active_pchan && active_pchan->parent) {
-    /* For child, show parent local regardless if "local location" is set for parent bone. */
-    transform_orientations_create_from_axis(r_mat, UNPACK3(active_pchan->parent->pose_mat));
-    float ob_orientations_mat[3][3];
-    transform_orientations_create_from_axis(ob_orientations_mat,
-                                            UNPACK3(ob->object_to_world().ptr()));
-    mul_m3_m3_pre(r_mat, ob_orientations_mat);
-    return;
-  }
-
-  /* For root, use local transform of armature object. */
-  transform_orientations_create_from_axis(r_mat, UNPACK3(ob->object_to_world().ptr()));
 }
 
 static void handle_object_parent_orientation(Object *ob, float r_mat[3][3])
@@ -674,19 +508,9 @@ short calc_orientation_from_type_ex(const Main &bmain,
 {
   switch (orientation_index) {
     case V3D_ORIENT_GIMBAL: {
-
-      if (ob) {
-        if (ob->mode & OB_MODE_POSE) {
-          const bPoseChannel *pchan = BKE_pose_channel_active_if_bonecoll_visible(ob);
-
-          if (pchan && gimbal_axis_pose(ob, pchan, r_mat)) {
-            break;
-          }
-        }
-        else {
-          if (gimbal_axis_object(ob, r_mat)) {
-            break;
-          }
+      if (ob && !(ob->mode & OB_MODE_POSE)) {
+        if (gimbal_axis_object(ob, r_mat)) {
+          break;
         }
       }
       /* If not gimbal, fall through to normal. */
@@ -694,10 +518,6 @@ short calc_orientation_from_type_ex(const Main &bmain,
     }
     case V3D_ORIENT_PARENT: {
       if (ob) {
-        if (ob->mode & OB_MODE_POSE) {
-          handle_armature_parent_orientation(ob, r_mat);
-          break;
-        }
         handle_object_parent_orientation(ob, r_mat);
         break;
       }
@@ -705,7 +525,7 @@ short calc_orientation_from_type_ex(const Main &bmain,
       ATTR_FALLTHROUGH;
     }
     case V3D_ORIENT_NORMAL: {
-      if (obedit || (ob && ob->mode & OB_MODE_POSE)) {
+      if (obedit) {
         ED_getTransformOrientationMatrix(
             bmain, scene, view_layer, v3d, ob, obedit, pivot_point, r_mat);
         break;
@@ -715,17 +535,7 @@ short calc_orientation_from_type_ex(const Main &bmain,
     }
     case V3D_ORIENT_LOCAL: {
       if (ob) {
-        if (ob->mode & OB_MODE_POSE) {
-          /* Each bone moves on its own local axis, but to avoid confusion,
-           * use the active bone's axis for display #33575, this works as expected on a single
-           * bone and users who select many bones will understand what's going on and what local
-           * means when they start transforming. */
-          ED_getTransformOrientationMatrix(
-              bmain, scene, view_layer, v3d, ob, obedit, pivot_point, r_mat);
-        }
-        else {
-          transform_orientations_create_from_axis(r_mat, UNPACK3(ob->object_to_world().ptr()));
-        }
+        transform_orientations_create_from_axis(r_mat, UNPACK3(ob->object_to_world().ptr()));
         break;
       }
       /* If not local, fall through to global. */
@@ -787,14 +597,6 @@ short transform_orientation_matrix_get(bContext *C,
   if ((t->spacetype == SPACE_VIEW3D) && t->region && (t->region->regiontype == RGN_TYPE_WINDOW)) {
     v3d = static_cast<View3D *>(t->view);
     rv3d = static_cast<RegionView3D *>(t->region->regiondata);
-
-    if (ob && (ob->mode & OB_MODE_ALL_WEIGHT_PAINT) && !(t->options & CTX_PAINT_CURVE)) {
-      Object *ob_armature = transform_object_deform_pose_armature_get(t, ob);
-      if (ob_armature) {
-        /* The armature matrix is used for GIMBAL, NORMAL and LOCAL orientations. */
-        ob = ob_armature;
-      }
-    }
   }
 
   const short orient_index_result = calc_orientation_from_type_ex(
@@ -1212,208 +1014,6 @@ int getTransformOrientation_ex(const Main &bmain,
       negate_v3(r_plane);
 
     } /* End edit-mesh. */
-    else if (ELEM(obedit->type, OB_CURVES_LEGACY, OB_SURF)) {
-      Curve *cu = id_cast<Curve *>(obedit->data);
-      Nurb *nu = nullptr;
-      int a;
-      ListBaseT<Nurb> *nurbs = BKE_curve_editNurbs_get(cu);
-
-      void *vert_act = nullptr;
-      if (activeOnly && BKE_curve_nurb_vert_active_get(cu, &nu, &vert_act)) {
-        if (nu->type == CU_BEZIER) {
-          BezTriple *bezt = static_cast<BezTriple *>(vert_act);
-          BKE_nurb_bezt_calc_normal(nu, bezt, r_normal);
-          BKE_nurb_bezt_calc_plane(nu, bezt, r_plane);
-        }
-        else {
-          BPoint *bp = static_cast<BPoint *>(vert_act);
-          BKE_nurb_bpoint_calc_normal(nu, bp, r_normal);
-          BKE_nurb_bpoint_calc_plane(nu, bp, r_plane);
-        }
-      }
-      else {
-        const bool use_handle = v3d ? (v3d->overlay.handle_display != CURVE_HANDLE_NONE) : true;
-
-        for (nu = nurbs->first(); nu; nu = nu->next) {
-          /* Only bezier has a normal. */
-          if (nu->type == CU_BEZIER) {
-            BezTriple *bezt = nu->bezt;
-            a = nu->pntsu;
-            while (a--) {
-              short flag = 0;
-
-#define SEL_F1 (1 << 0)
-#define SEL_F2 (1 << 1)
-#define SEL_F3 (1 << 2)
-
-              if (use_handle) {
-                if (bezt->f1 & SELECT) {
-                  flag |= SEL_F1;
-                }
-                if (bezt->f2 & SELECT) {
-                  flag |= SEL_F2;
-                }
-                if (bezt->f3 & SELECT) {
-                  flag |= SEL_F3;
-                }
-              }
-              else {
-                flag = (bezt->f2 & SELECT) ? (SEL_F1 | SEL_F2 | SEL_F3) : 0;
-              }
-
-              /* Exception. */
-              if (flag) {
-                float tvec[3];
-                if ((around == V3D_AROUND_LOCAL_ORIGINS) ||
-                    ELEM(flag, SEL_F2, SEL_F1 | SEL_F3, SEL_F1 | SEL_F2 | SEL_F3))
-                {
-                  BKE_nurb_bezt_calc_normal(nu, bezt, tvec);
-                  add_v3_v3(r_normal, tvec);
-                }
-                else {
-                  /* Ignore `bezt->f2` in this case. */
-                  if (flag & SEL_F1) {
-                    sub_v3_v3v3(tvec, bezt->vec[0], bezt->vec[1]);
-                    normalize_v3(tvec);
-                    add_v3_v3(r_normal, tvec);
-                  }
-                  if (flag & SEL_F3) {
-                    sub_v3_v3v3(tvec, bezt->vec[1], bezt->vec[2]);
-                    normalize_v3(tvec);
-                    add_v3_v3(r_normal, tvec);
-                  }
-                }
-
-                BKE_nurb_bezt_calc_plane(nu, bezt, tvec);
-                add_v3_v3(r_plane, tvec);
-              }
-
-#undef SEL_F1
-#undef SEL_F2
-#undef SEL_F3
-
-              bezt++;
-            }
-          }
-          else if (nu->bp && (nu->pntsv == 1)) {
-            BPoint *bp = nu->bp;
-            a = nu->pntsu;
-            while (a--) {
-              if (bp->f1 & SELECT) {
-                float tvec[3];
-
-                BPoint *bp_prev = BKE_nurb_bpoint_get_prev(nu, bp);
-                BPoint *bp_next = BKE_nurb_bpoint_get_next(nu, bp);
-
-                const bool is_prev_sel = bp_prev && (bp_prev->f1 & SELECT);
-                const bool is_next_sel = bp_next && (bp_next->f1 & SELECT);
-                if (is_prev_sel == false && is_next_sel == false) {
-                  /* Isolated, add based on surrounding. */
-                  BKE_nurb_bpoint_calc_normal(nu, bp, tvec);
-                  add_v3_v3(r_normal, tvec);
-                }
-                else if (is_next_sel) {
-                  /* A segment, add the edge normal. */
-                  sub_v3_v3v3(tvec, bp->vec, bp_next->vec);
-                  normalize_v3(tvec);
-                  add_v3_v3(r_normal, tvec);
-                }
-
-                BKE_nurb_bpoint_calc_plane(nu, bp, tvec);
-                add_v3_v3(r_plane, tvec);
-              }
-              bp++;
-            }
-          }
-        }
-      }
-
-      if (!is_zero_v3(r_normal)) {
-        result = ORIENTATION_FACE;
-      }
-    }
-    else if (obedit->type == OB_MBALL) {
-      MetaBall *mb = id_cast<MetaBall *>(obedit->data);
-      MetaElem *ml;
-      bool ok = false;
-      float tmat[3][3];
-
-      if (activeOnly && (ml = mb->lastelem)) {
-        quat_to_mat3(tmat, ml->quat);
-        add_v3_v3(r_normal, tmat[2]);
-        add_v3_v3(r_plane, tmat[1]);
-        ok = true;
-      }
-      else {
-        for (MetaElem &ml : *mb->editelems) {
-          if (ml.flag & SELECT) {
-            quat_to_mat3(tmat, ml.quat);
-            add_v3_v3(r_normal, tmat[2]);
-            add_v3_v3(r_plane, tmat[1]);
-            ok = true;
-          }
-        }
-      }
-
-      if (ok) {
-        if (!is_zero_v3(r_plane)) {
-          result = ORIENTATION_FACE;
-        }
-      }
-    }
-    else if (obedit->type == OB_ARMATURE) {
-      bArmature *arm = id_cast<bArmature *>(obedit->data);
-      EditBone *ebone;
-      bool ok = false;
-      float tmat[3][3];
-
-      if (activeOnly && (ebone = arm->act_edbone)) {
-        ED_armature_ebone_to_mat3(ebone, tmat);
-        add_v3_v3(r_normal, tmat[2]);
-        add_v3_v3(r_plane, tmat[1]);
-        ok = true;
-      }
-      else {
-        /* When we only have the root/tip are selected. */
-        bool fallback_ok = false;
-        float fallback_normal[3];
-        float fallback_plane[3];
-
-        zero_v3(fallback_normal);
-        zero_v3(fallback_plane);
-
-        for (EditBone &ebone : *arm->edbo) {
-          if (animrig::bone_is_visible(arm, &ebone)) {
-            if (ebone.flag & BONE_SELECTED) {
-              ED_armature_ebone_to_mat3(&ebone, tmat);
-              add_v3_v3(r_normal, tmat[2]);
-              add_v3_v3(r_plane, tmat[1]);
-              ok = true;
-            }
-            else if ((ok == false) && ((ebone.flag & BONE_TIPSEL) ||
-                                       ((ebone.flag & BONE_ROOTSEL) &&
-                                        (ebone.parent && ebone.flag & BONE_CONNECTED) == false)))
-            {
-              ED_armature_ebone_to_mat3(&ebone, tmat);
-              add_v3_v3(fallback_normal, tmat[2]);
-              add_v3_v3(fallback_plane, tmat[1]);
-              fallback_ok = true;
-            }
-          }
-        }
-        if ((ok == false) && fallback_ok) {
-          ok = true;
-          copy_v3_v3(r_normal, fallback_normal);
-          copy_v3_v3(r_plane, fallback_plane);
-        }
-      }
-
-      if (ok) {
-        if (!is_zero_v3(r_plane)) {
-          result = ORIENTATION_EDGE;
-        }
-      }
-    }
 
     /* Vectors from edges don't need the special transpose inverse multiplication. */
     if (result == ORIENTATION_EDGE) {
@@ -1431,50 +1031,6 @@ int getTransformOrientation_ex(const Main &bmain,
     else {
       mul_m3_v3(mat, r_normal);
       mul_m3_v3(mat, r_plane);
-    }
-  }
-  else if (ob && (ob->mode & OB_MODE_POSE)) {
-    bArmature *arm = id_cast<bArmature *>(ob->data);
-    bPoseChannel *pchan;
-    float imat[3][3], mat[3][3];
-    bool ok = false;
-
-    if (activeOnly && (pchan = BKE_pose_channel_active_if_bonecoll_visible(ob))) {
-      float pose_mat[3][3];
-      BKE_pose_channel_transform_orientation(arm, pchan, pose_mat);
-
-      add_v3_v3(r_normal, pose_mat[2]);
-      add_v3_v3(r_plane, pose_mat[1]);
-      ok = true;
-    }
-    else {
-      const int transformed_len = armature_bone_transflags_update(*ob, arm, &ob->pose->chanbase);
-      if (transformed_len) {
-        /* Use channels to get stats. */
-        for (bPoseChannel &pchan : ob->pose->chanbase) {
-          if (pchan.runtime.flag & POSE_RUNTIME_TRANSFORM) {
-            float pose_mat[3][3];
-            BKE_pose_channel_transform_orientation(arm, &pchan, pose_mat);
-
-            add_v3_v3(r_normal, pose_mat[2]);
-            add_v3_v3(r_plane, pose_mat[1]);
-          }
-        }
-        ok = true;
-      }
-    }
-
-    /* Use for both active & all. */
-    if (ok) {
-      /* We need the transpose of the inverse for a normal. */
-      copy_m3_m4(imat, ob->object_to_world().ptr());
-
-      invert_m3_m3(mat, imat);
-      transpose_m3(mat);
-      mul_m3_v3(mat, r_normal);
-      mul_m3_v3(mat, r_plane);
-
-      result = ORIENTATION_EDGE;
     }
   }
   else {

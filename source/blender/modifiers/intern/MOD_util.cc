@@ -65,20 +65,7 @@ void MOD_get_texture_coords(MappingInfoModifierData *dmd,
   if (texmapping == MOD_DISP_MAP_OBJECT) {
     if (dmd->map_object != nullptr) {
       Object *map_object = dmd->map_object;
-      if (dmd->map_bone[0] != '\0') {
-        bPoseChannel *pchan = BKE_pose_channel_find_name(map_object->pose, dmd->map_bone);
-        if (pchan) {
-          float mat_bone_world[4][4];
-          mul_m4_m4m4(mat_bone_world, map_object->object_to_world().ptr(), pchan->pose_mat);
-          invert_m4_m4(mapref_imat, mat_bone_world);
-        }
-        else {
-          invert_m4_m4(mapref_imat, map_object->object_to_world().ptr());
-        }
-      }
-      else {
-        invert_m4_m4(mapref_imat, map_object->object_to_world().ptr());
-      }
+      invert_m4_m4(mapref_imat, map_object->object_to_world().ptr());
     }
     else { /* if there is no map object, default to local */
       texmapping = MOD_DISP_MAP_LOCAL;
@@ -172,12 +159,7 @@ void MOD_get_vgroup(const Object *ob,
   }
   else if (OB_TYPE_SUPPORT_VGROUP(ob->type)) {
     *defgrp_index = BKE_object_defgroup_name_index(ob, name);
-    if (*defgrp_index != -1 && ob->type == OB_LATTICE) {
-      *dvert = BKE_lattice_deform_verts_get(ob);
-    }
-    else {
-      *dvert = nullptr;
-    }
+    *dvert = nullptr;
   }
   else {
     *defgrp_index = -1;
@@ -203,14 +185,8 @@ void MOD_depsgraph_update_object_bone_relation(DepsNodeHandle *node,
 
 void modifier_type_init(ModifierTypeInfo *types[])
 {
-#define INIT_TYPE(typeName) \
-  do { \
-    ModifierTypeInfo *volatile info = &modifierType_##typeName; \
-    types[eModifierType_##typeName] = info ? info : &modifierType_None; \
-  } while (0)
+#define INIT_TYPE(typeName) (types[eModifierType_##typeName] = &modifierType_##typeName)
   INIT_TYPE(None);
-  INIT_TYPE(Curve);
-  INIT_TYPE(Lattice);
   INIT_TYPE(Subsurf);
   INIT_TYPE(Build);
   INIT_TYPE(Array);
@@ -218,28 +194,17 @@ void modifier_type_init(ModifierTypeInfo *types[])
   INIT_TYPE(EdgeSplit);
   INIT_TYPE(Bevel);
   INIT_TYPE(Displace);
-  INIT_TYPE(UVProject);
   INIT_TYPE(Decimate);
   INIT_TYPE(Smooth);
   INIT_TYPE(Cast);
   INIT_TYPE(Wave);
-  INIT_TYPE(Armature);
   INIT_TYPE(Hook);
-  INIT_TYPE(Softbody);
-  INIT_TYPE(Cloth);
-  INIT_TYPE(Collision);
   INIT_TYPE(Boolean);
   INIT_TYPE(MeshDeform);
-  INIT_TYPE(Ocean);
-  INIT_TYPE(ParticleSystem);
-  INIT_TYPE(ParticleInstance);
-  INIT_TYPE(Explode);
   INIT_TYPE(Shrinkwrap);
   INIT_TYPE(Mask);
   INIT_TYPE(SimpleDeform);
   INIT_TYPE(Multires);
-  INIT_TYPE(Surface);
-  INIT_TYPE(Fluid);
   INIT_TYPE(ShapeKey);
   INIT_TYPE(Solidify);
   INIT_TYPE(Screw);
@@ -247,52 +212,18 @@ void modifier_type_init(ModifierTypeInfo *types[])
   INIT_TYPE(WeightVGEdit);
   INIT_TYPE(WeightVGMix);
   INIT_TYPE(WeightVGProximity);
-  INIT_TYPE(DynamicPaint);
   INIT_TYPE(Remesh);
   INIT_TYPE(Skin);
   INIT_TYPE(LaplacianSmooth);
   INIT_TYPE(Triangulate);
-  INIT_TYPE(UVWarp);
-  INIT_TYPE(MeshCache);
   INIT_TYPE(LaplacianDeform);
   INIT_TYPE(Wireframe);
   INIT_TYPE(Weld);
   INIT_TYPE(DataTransfer);
   INIT_TYPE(NormalEdit);
   INIT_TYPE(CorrectiveSmooth);
-  INIT_TYPE(MeshSequenceCache);
   INIT_TYPE(SurfaceDeform);
   INIT_TYPE(WeightedNormal);
-  INIT_TYPE(MeshToVolume);
-  INIT_TYPE(VolumeDisplace);
-  INIT_TYPE(VolumeToMesh);
-  INIT_TYPE(Nodes);
-  INIT_TYPE(GreasePencilOpacity);
-  INIT_TYPE(GreasePencilSubdiv);
-  INIT_TYPE(GreasePencilColor);
-  INIT_TYPE(GreasePencilTint);
-  INIT_TYPE(GreasePencilSmooth);
-  INIT_TYPE(GreasePencilOffset);
-  INIT_TYPE(GreasePencilNoise);
-  INIT_TYPE(GreasePencilMirror);
-  INIT_TYPE(GreasePencilThickness);
-  INIT_TYPE(GreasePencilLattice);
-  INIT_TYPE(GreasePencilDash);
-  INIT_TYPE(GreasePencilMultiply);
-  INIT_TYPE(GreasePencilLength);
-  INIT_TYPE(GreasePencilWeightAngle);
-  INIT_TYPE(GreasePencilArray);
-  INIT_TYPE(GreasePencilWeightProximity);
-  INIT_TYPE(GreasePencilHook);
-  INIT_TYPE(GreasePencilLineart);
-  INIT_TYPE(GreasePencilArmature);
-  INIT_TYPE(GreasePencilTime);
-  INIT_TYPE(GreasePencilSimplify);
-  INIT_TYPE(GreasePencilEnvelope);
-  INIT_TYPE(GreasePencilOutline);
-  INIT_TYPE(GreasePencilShrinkwrap);
-  INIT_TYPE(GreasePencilBuild);
-  INIT_TYPE(GreasePencilTexture);
 #undef INIT_TYPE
 }
 

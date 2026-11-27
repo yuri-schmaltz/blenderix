@@ -17,26 +17,13 @@
 #include "BLI_math_geom_c.hh"
 #include "BLI_math_matrix_c.hh"
 
-#include "DNA_armature_types.h"
-#include "DNA_lattice_types.h"
-#include "DNA_meta_types.h"
-#include "DNA_pointcloud_types.h"
-
-#include "BKE_action.hh"
-#include "BKE_armature.hh"
 #include "BKE_context.hh"
-#include "BKE_crazyspace.hh"
-#include "BKE_curve.hh"
-#include "BKE_curves_utils.hh"
 #include "BKE_editmesh.hh"
 #include "BKE_global.hh"
-#include "BKE_grease_pencil.hh"
 #include "BKE_layer.hh"
 #include "BKE_library.hh"
 #include "BKE_object.hh"
 #include "BKE_object_types.hh"
-#include "BKE_paint.hh"
-#include "BKE_pointcache.h"
 #include "BKE_scene.hh"
 #include "BKE_screen.hh"
 #include "BKE_view3d_runtime.hh"
@@ -44,22 +31,15 @@
 #include "WM_api.hh"
 #include "WM_message.hh"
 
-#include "ED_armature.hh"
-#include "ED_curves.hh"
 #include "ED_gizmo_library.hh"
 #include "ED_gizmo_utils.hh"
-#include "ED_gpencil_legacy.hh"
-#include "ED_grease_pencil.hh"
 #include "ED_object.hh"
-#include "ED_particle.hh"
 #include "ED_screen.hh"
 
 #include "UI_resources.hh"
 
 #include "RNA_access.hh"
 #include "RNA_define.hh"
-
-#include "ANIM_armature.hh"
 
 /* Local module include. */
 #include "transform.hh"
@@ -504,23 +484,12 @@ static void protectflag_to_drawflags(short protectflag, short *drawflags)
   }
 }
 
-/* Similar to #transform_object_deform_pose_armature_get but does not check visibility. */
 static Object *gizmo_3d_transform_space_object_get(const Main &bmain,
                                                    Scene *scene,
                                                    ViewLayer *view_layer)
 {
   BKE_view_layer_synced_ensure(bmain, scene, view_layer);
-  Object *ob = BKE_view_layer_active_object_get(view_layer);
-  if (ob && ob->mode & OB_MODE_WEIGHT_PAINT) {
-    /* It is assumed that when the object is in Weight Paint mode, it is not in Edit mode. So we
-     * don't need to check the #OB_MODE_EDIT flag. */
-    BLI_assert(!(ob->mode & OB_MODE_EDIT));
-    Object *obpose = BKE_object_pose_armature_get(ob);
-    if (obpose != nullptr) {
-      ob = obpose;
-    }
-  }
-  return ob;
+  return BKE_view_layer_active_object_get(view_layer);
 }
 
 /**
@@ -537,7 +506,7 @@ static Object *gizmo_3d_transform_space_object_get(const Main &bmain,
  */
 static int gizmo_3d_foreach_selected(const bContext *C,
                                      const short orient_index,
-                                     const bool use_curve_handles,
+                                     const bool /*use_curve_handles*/,
                                      const bool use_only_center,
                                      FunctionRef<void(const float3 &)> user_fn,
                                      const float (**r_mat)[4],
@@ -556,33 +525,20 @@ static int gizmo_3d_foreach_selected(const bContext *C,
   ScrArea *area = CTX_wm_area(C);
   const Main *bmain = CTX_data_main(C);
   Scene *scene = CTX_data_scene(C);
-  /* TODO(sergey): This function is used from operator's modal() and from gizmo's refresh().
-   * Is it fine to possibly evaluate dependency graph here? */
-  Depsgraph *depsgraph = CTX_data_expect_evaluated_depsgraph(C);
   ViewLayer *view_layer = CTX_data_view_layer(C);
   View3D *v3d = area->spacedata.first_as<View3D>();
-  int a, totsel = 0;
+  int totsel = 0;
 
   Object *ob = gizmo_3d_transform_space_object_get(*bmain, scene, view_layer);
 
   if (Object *obedit = OBEDIT_FROM_OBACT(ob)) {
-
-#define FOREACH_EDIT_OBJECT_BEGIN(ob_iter, use_mat_local) \
-  { \
-    invert_m4_m4(obedit->runtime->world_to_object.ptr(), obedit->object_to_world().ptr()); \
-    Vector<Object *> objects = BKE_view_layer_array_from_objects_in_edit_mode( \
-        *bmain, scene, view_layer, CTX_wm_view3d(C)); \
-    for (Object *ob_iter : objects) { \
-      const bool use_mat_local = (ob_iter != obedit);
-
-#define FOREACH_EDIT_OBJECT_END() \
-  } \
-  } \
-  ((void)0)
-
     ob = obedit;
     if (obedit->type == OB_MESH) {
-      FOREACH_EDIT_OBJECT_BEGIN (ob_iter, use_mat_local) {
+      invert_m4_m4(obedit->runtime->world_to_object.ptr(), obedit->object_to_world().ptr());
+      Vector<Object *> objects = BKE_view_layer_array_from_objects_in_edit_mode(
+          *bmain, scene, view_layer, CTX_wm_view3d(C));
+      for (Object *ob_iter : objects) {
+        const bool use_mat_local = (ob_iter != obedit);
         BMesh *bm = BKE_editmesh_bmesh_ensure(ob_iter);
         if (bm->totvertsel == 0) {
           continue;
@@ -606,309 +562,7 @@ static int gizmo_3d_foreach_selected(const bContext *C,
           }
         }
       }
-      FOREACH_EDIT_OBJECT_END();
     } /* End editmesh. */
-    else if (obedit->type == OB_ARMATURE) {
-      FOREACH_EDIT_OBJECT_BEGIN (ob_iter, use_mat_local) {
-        bArmature *arm = id_cast<bArmature *>(ob_iter->data);
-
-        float mat_local[4][4];
-        if (use_mat_local) {
-          mul_m4_m4m4(
-              mat_local, obedit->world_to_object().ptr(), ob_iter->object_to_world().ptr());
-        }
-        for (EditBone &ebo : *arm->edbo) {
-          if (animrig::bone_is_visible(arm, &ebo)) {
-            if (ebo.flag & BONE_TIPSEL) {
-              run_coord_with_matrix(ebo.tail, use_mat_local, mat_local);
-              totsel++;
-            }
-            if ((ebo.flag & BONE_ROOTSEL) &&
-                /* Don't include same point multiple times. */
-                ((ebo.flag & BONE_CONNECTED) && (ebo.parent != nullptr) &&
-                 (ebo.parent->flag & BONE_TIPSEL) && animrig::bone_is_visible(arm, ebo.parent)) ==
-                    0)
-            {
-              run_coord_with_matrix(ebo.head, use_mat_local, mat_local);
-              totsel++;
-
-              if (r_drawflags) {
-                if (ebo.flag & (BONE_SELECTED | BONE_ROOTSEL | BONE_TIPSEL)) {
-                  if (ebo.flag & BONE_EDITMODE_LOCKED) {
-                    protectflag_to_drawflags(OB_LOCK_LOC | OB_LOCK_ROT | OB_LOCK_SCALE,
-                                             r_drawflags);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      FOREACH_EDIT_OBJECT_END();
-    }
-    else if (ELEM(obedit->type, OB_CURVES_LEGACY, OB_SURF)) {
-      FOREACH_EDIT_OBJECT_BEGIN (ob_iter, use_mat_local) {
-        Curve *cu = id_cast<Curve *>(ob_iter->data);
-        BezTriple *bezt;
-        BPoint *bp;
-        ListBaseT<Nurb> *nurbs = BKE_curve_editNurbs_get(cu);
-
-        float mat_local[4][4];
-        if (use_mat_local) {
-          mul_m4_m4m4(
-              mat_local, obedit->world_to_object().ptr(), ob_iter->object_to_world().ptr());
-        }
-
-        Nurb *nu = nurbs->first();
-        while (nu) {
-          if (nu->type == CU_BEZIER) {
-            bezt = nu->bezt;
-            a = nu->pntsu;
-            while (a--) {
-              /* Exceptions:
-               * - If handles are hidden then only check the center points.
-               * - If the center knot is selected then only use this as the center point.
-               */
-              if (v3d->overlay.handle_display == CURVE_HANDLE_NONE) {
-                if (bezt->f2 & SELECT) {
-                  run_coord_with_matrix(bezt->vec[1], use_mat_local, mat_local);
-                  totsel++;
-                }
-              }
-              else if (bezt->f2 & SELECT) {
-                run_coord_with_matrix(bezt->vec[1], use_mat_local, mat_local);
-                totsel++;
-              }
-              else {
-                if (bezt->f1 & SELECT) {
-                  const float *co = bezt->vec[!use_curve_handles ? 1 : 0];
-                  run_coord_with_matrix(co, use_mat_local, mat_local);
-                  totsel++;
-                }
-                if (bezt->f3 & SELECT) {
-                  const float *co = bezt->vec[!use_curve_handles ? 1 : 2];
-                  run_coord_with_matrix(co, use_mat_local, mat_local);
-                  totsel++;
-                }
-              }
-              bezt++;
-            }
-          }
-          else {
-            bp = nu->bp;
-            a = nu->pntsu * nu->pntsv;
-            while (a--) {
-              if (bp->f1 & SELECT) {
-                run_coord_with_matrix(bp->vec, use_mat_local, mat_local);
-                totsel++;
-              }
-              bp++;
-            }
-          }
-          nu = nu->next;
-        }
-      }
-      FOREACH_EDIT_OBJECT_END();
-    }
-    else if (obedit->type == OB_MBALL) {
-      FOREACH_EDIT_OBJECT_BEGIN (ob_iter, use_mat_local) {
-        MetaBall *mb = id_cast<MetaBall *>(ob_iter->data);
-
-        float mat_local[4][4];
-        if (use_mat_local) {
-          mul_m4_m4m4(
-              mat_local, obedit->world_to_object().ptr(), ob_iter->object_to_world().ptr());
-        }
-
-        for (MetaElem &ml : *mb->editelems) {
-          if (ml.flag & SELECT) {
-            run_coord_with_matrix(&ml.x, use_mat_local, mat_local);
-            totsel++;
-          }
-        }
-      }
-      FOREACH_EDIT_OBJECT_END();
-    }
-    else if (obedit->type == OB_LATTICE) {
-      FOREACH_EDIT_OBJECT_BEGIN (ob_iter, use_mat_local) {
-        Lattice *lt = (id_cast<Lattice *>(ob_iter->data))->editlatt->latt;
-        BPoint *bp = lt->def;
-        a = lt->pntsu * lt->pntsv * lt->pntsw;
-
-        float mat_local[4][4];
-        if (use_mat_local) {
-          mul_m4_m4m4(
-              mat_local, obedit->world_to_object().ptr(), ob_iter->object_to_world().ptr());
-        }
-
-        while (a--) {
-          if (bp->f1 & SELECT) {
-            run_coord_with_matrix(bp->vec, use_mat_local, mat_local);
-            totsel++;
-          }
-          bp++;
-        }
-      }
-      FOREACH_EDIT_OBJECT_END();
-    }
-    else if (obedit->type == OB_CURVES) {
-      FOREACH_EDIT_OBJECT_BEGIN (ob_iter, use_mat_local) {
-        const Curves &curves_id = *id_cast<Curves *>(ob_iter->data);
-        const bke::CurvesGeometry &curves = curves_id.geometry.wrap();
-        const bke::crazyspace::GeometryDeformation deformation =
-            bke::crazyspace::get_evaluated_curves_deformation(*depsgraph, *ob);
-
-        float4x4 mat_local;
-        if (use_mat_local) {
-          mat_local = obedit->world_to_object() * ob_iter->object_to_world();
-        }
-
-        IndexMaskMemory memory;
-        const IndexMask bezier_points = bke::curves::curve_type_point_selection(
-            curves, CURVE_TYPE_BEZIER, memory);
-
-        auto run_points = [&](const Span<float3> positions, const StringRef selection_name) {
-          const IndexMask selected_points = ed::curves::retrieve_selected_points(
-              curves, selection_name, bezier_points, memory);
-
-          totsel += selected_points.size();
-          selected_points.foreach_index([&](const int point_i) {
-            run_coord_with_matrix(positions[point_i], use_mat_local, mat_local.ptr());
-          });
-        };
-
-        run_points(deformation.positions, ".selection");
-
-        if (curves.has_curve_with_type(CURVE_TYPE_BEZIER)) {
-          run_points(*curves.handle_positions_left(), ".selection_handle_left");
-          run_points(*curves.handle_positions_right(), ".selection_handle_right");
-        }
-      }
-      FOREACH_EDIT_OBJECT_END();
-    }
-    else if (obedit->type == OB_POINTCLOUD) {
-      FOREACH_EDIT_OBJECT_BEGIN (ob_iter, use_mat_local) {
-        const PointCloud &pointcloud = *id_cast<const PointCloud *>(ob_iter->data);
-
-        float4x4 mat_local;
-        if (use_mat_local) {
-          mat_local = obedit->world_to_object() * ob_iter->object_to_world();
-        }
-
-        const bke::AttributeAccessor attributes = pointcloud.attributes();
-        const VArray selection = *attributes.lookup_or_default<bool>(
-            ".selection", bke::AttrDomain::Point, true);
-
-        IndexMaskMemory memory;
-        const IndexMask mask = IndexMask::from_bools(selection, memory);
-        const Span<float3> positions = pointcloud.positions();
-        totsel += mask.size();
-        mask.foreach_index([&](const int point) {
-          run_coord_with_matrix(positions[point], use_mat_local, mat_local.ptr());
-        });
-      }
-      FOREACH_EDIT_OBJECT_END();
-    }
-    else if (obedit->type == OB_GREASE_PENCIL) {
-      FOREACH_EDIT_OBJECT_BEGIN (ob_iter, use_mat_local) {
-        GreasePencil &grease_pencil = *id_cast<GreasePencil *>(ob_iter->data);
-
-        float4x4 mat_local = float4x4::identity();
-        if (use_mat_local) {
-          mat_local = obedit->world_to_object() * ob_iter->object_to_world();
-        }
-
-        const Vector<ed::greasepencil::MutableDrawingInfo> drawings =
-            ed::greasepencil::retrieve_editable_drawings(*scene, grease_pencil);
-        threading::parallel_for_each(
-            drawings, [&](const ed::greasepencil::MutableDrawingInfo &info) {
-              const bke::CurvesGeometry &curves = info.drawing.strokes();
-
-              const bke::crazyspace::GeometryDeformation deformation =
-                  bke::crazyspace::get_evaluated_grease_pencil_drawing_deformation(
-                      *depsgraph, *ob, info.drawing);
-
-              const float4x4 layer_transform =
-                  mat_local * grease_pencil.layer(info.layer_index).to_object_space(*ob_iter);
-
-              IndexMaskMemory memory;
-              const IndexMask editable_points = ed::greasepencil::retrieve_editable_points(
-                  *ob, info.drawing, info.layer_index, memory);
-              const IndexMask bezier_points = bke::curves::curve_type_point_selection(
-                  curves, CURVE_TYPE_BEZIER, memory);
-
-              auto run_points = [&](const Span<float3> positions, const StringRef selection_name) {
-                const IndexMask selected_points = ed::curves::retrieve_selected_points(
-                    curves, selection_name, bezier_points, memory);
-                const IndexMask selected_editable_points = IndexMask::from_intersection(
-                    editable_points, selected_points, memory);
-
-                totsel += selected_editable_points.size();
-                selected_editable_points.foreach_index([&](const int point_i) {
-                  run_coord_with_matrix(positions[point_i], true, layer_transform.ptr());
-                });
-              };
-
-              run_points(deformation.positions, ".selection");
-
-              if (curves.has_curve_with_type(CURVE_TYPE_BEZIER)) {
-                run_points(*curves.handle_positions_left(), ".selection_handle_left");
-                run_points(*curves.handle_positions_right(), ".selection_handle_right");
-              }
-            });
-      }
-      FOREACH_EDIT_OBJECT_END();
-    }
-
-#undef FOREACH_EDIT_OBJECT_BEGIN
-#undef FOREACH_EDIT_OBJECT_END
-  }
-  else if (ob && (ob->mode & OB_MODE_POSE)) {
-    invert_m4_m4(ob->runtime->world_to_object.ptr(), ob->object_to_world().ptr());
-
-    const Main *bmain = CTX_data_main(C);
-    Vector<Object *> objects = BKE_object_pose_array_get(*bmain, scene, view_layer, v3d);
-
-    for (Object *ob_iter : objects) {
-      const bool use_mat_local = (ob_iter != ob);
-      /* Mislead counting bones... bah. We don't know the gizmo mode, could be mixed. */
-      const int mode = TFM_ROTATION;
-
-      transform_convert_pose_transflags_update(ob_iter, mode, V3D_AROUND_CENTER_BOUNDS);
-
-      float mat_local[4][4];
-      if (use_mat_local) {
-        mul_m4_m4m4(mat_local, ob->world_to_object().ptr(), ob_iter->object_to_world().ptr());
-      }
-
-      bArmature *arm = id_cast<bArmature *>(ob_iter->data);
-      /* Use channels to get stats. */
-      for (bPoseChannel &pchan : ob_iter->pose->chanbase) {
-        if (!(pchan.runtime.flag & POSE_RUNTIME_TRANSFORM)) {
-          continue;
-        }
-
-        float pchan_pivot[3];
-        BKE_pose_channel_transform_location(arm, &pchan, pchan_pivot);
-        run_coord_with_matrix(pchan_pivot, use_mat_local, mat_local);
-        totsel++;
-
-        if (r_drawflags) {
-          /* Protect-flags apply to local space in pose mode, so only let them influence axis
-           * visibility if we show the global orientation, otherwise it's confusing. */
-          if (ELEM(orient_index, V3D_ORIENT_LOCAL, V3D_ORIENT_GIMBAL)) {
-            protectflag_to_drawflags(pchan.protectflag, r_drawflags);
-          }
-        }
-      }
-    }
-  }
-  else if (ob && (ob->mode & OB_MODE_ALL_PAINT_MESH)) {
-    if (ob->mode & OB_MODE_SCULPT) {
-      totsel = 1;
-      run_coord_with_matrix(
-          ob->runtime->sculpt_session->pivot_pos, false, ob->object_to_world().ptr());
-    }
   }
   else {
     const Main *bmain = CTX_data_main(C);
@@ -1097,11 +751,6 @@ static bool gizmo_3d_calc_pos(const bContext *C,
       BKE_view_layer_synced_ensure(*bmain, scene, view_layer);
       Object *ob = BKE_view_layer_active_object_get(view_layer);
       if (ob != nullptr) {
-        if ((ob->mode & OB_MODE_SCULPT) && ob->runtime->sculpt_session) {
-          SculptSession *ss = ob->runtime->sculpt_session;
-          copy_v3_v3(r_pivot_pos, ss->pivot_pos);
-          return true;
-        }
         if (object::calc_active_center(ob, false, r_pivot_pos)) {
           return true;
         }

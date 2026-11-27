@@ -1220,25 +1220,9 @@ static void draw_viewport_name(ARegion *region, View3D *v3d, int xoffset, int *y
   BLF_draw_default(xoffset, *yoffset, 0.0f, name.data(), name.size());
 }
 
-static bool is_grease_pencil_with_layer_keyframe(const Object &ob)
-{
-  if (ob.type != OB_GREASE_PENCIL) {
-    return false;
-  }
-
-  using namespace blender::bke::greasepencil;
-  const GreasePencil &grease_pencil = *id_cast<GreasePencil *>(ob.data);
-  for (const Layer *layer : grease_pencil.layers()) {
-    if (!layer->frames().is_empty()) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /**
  * Draw info beside axes in top-left corner:
- * collection, object name, bone name (if available).
+ * collection, object name, shape-key name (if available).
  */
 static void draw_selected_name(const Main &bmain,
                                const View3D *v3d,
@@ -1258,15 +1242,6 @@ static void draw_selected_name(const Main &bmain,
 
   const char *info_array[16];
   int i = 0;
-
-  /* Info can contain:
-   * - 1 collection name `(MAX_ID_NAME - 2 + 3)`.
-   * - 1 object name `(MAX_ID_NAME - 2)`.
-   * - 1 object data name `(MAX_ID_NAME - 2)`.
-   * - 2 non-ID data names (bones, shape-keys...) `(MAX_NAME * 2)`.
-   * - 2 BREAD_CRUMB_SEPARATOR(s) `(10)`.
-   * - 1 SHAPE_KEY_PINNED marker and a trailing '\0' `(9+1)` - translated, so give some room!
-   */
 
   if ((ob == nullptr) || (ob->mode == OB_MODE_OBJECT)) {
     BKE_view_layer_synced_ensure(bmain, scene, view_layer);
@@ -1289,43 +1264,7 @@ static void draw_selected_name(const Main &bmain,
       }
     }
 
-    /* name(s) to display depends on type of object */
-    if (ob->type == OB_ARMATURE) {
-      bArmature *arm = id_cast<bArmature *>(ob->data);
-
-      /* show name of active bone too (if possible) */
-      if (arm->edbo) {
-        if (arm->act_edbone) {
-          info_array[i++] = msg_sep_ob;
-          info_array[i++] = arm->act_edbone->name;
-        }
-      }
-      else if (ob->mode & OB_MODE_POSE) {
-        if (arm->act_bone) {
-
-          if (ANIM_bonecoll_is_visible_actbone(arm)) {
-            info_array[i++] = msg_sep_ob;
-            info_array[i++] = arm->act_bone->name;
-          }
-        }
-      }
-    }
-    else if (ELEM(ob->type, OB_MESH, OB_LATTICE, OB_CURVES_LEGACY)) {
-      /* Try to display active bone and active shape-key too (if they exist). */
-
-      if (ob->type == OB_MESH && ob->mode & OB_MODE_WEIGHT_PAINT) {
-        Object *armobj = BKE_object_pose_armature_get(ob);
-        if (armobj && armobj->mode & OB_MODE_POSE) {
-          bArmature *arm = id_cast<bArmature *>(armobj->data);
-          if (arm->act_bone) {
-            if (ANIM_bonecoll_is_visible_actbone(arm)) {
-              info_array[i++] = msg_sep_ob;
-              info_array[i++] = arm->act_bone->name;
-            }
-          }
-        }
-      }
-
+    if (ob->type == OB_MESH) {
       Key *key = BKE_key_from_object(ob);
       if (key) {
         KeyBlock *kb = static_cast<KeyBlock *>(BLI_findlink(&key->block, ob->shapenr - 1));
@@ -1337,11 +1276,6 @@ static void draw_selected_name(const Main &bmain,
           }
         }
       }
-    }
-
-    /* color depends on whether there is a keyframe */
-    if (is_grease_pencil_with_layer_keyframe(*ob)) {
-      ui::theme::font_theme_color_set(font_id, TH_TIME_GP_KEYFRAME);
     }
 
     if (animrig::id_frame_has_keyframe(id_cast<ID *>(ob),
