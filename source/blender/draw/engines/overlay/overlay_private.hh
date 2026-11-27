@@ -9,7 +9,6 @@
 #pragma once
 
 #include "BKE_context.hh"
-#include "BKE_movieclip.hh"
 #include "BKE_object.hh"
 
 #include "BLI_function_ref.hh"
@@ -665,17 +664,12 @@ struct Resources : public select::SelectMap {
   /** Baked color ramp texture from theme and user settings. Maps weight [0..1] to color. */
   Texture weight_ramp_tx = {"weight_ramp"};
 
-  Vector<MovieClip *> bg_movie_clips;
-
   const ShapeCache &shapes;
 
   Resources(const SelectionType selection_type_, const ShapeCache &shapes_)
       : select::SelectMap(selection_type_), shapes(shapes_) {};
 
-  ~Resources()
-  {
-    free_movieclips_textures();
-  }
+  ~Resources() = default;
 
   void update_theme_settings(const DRWContext *ctx, const State &state);
   void update_clip_planes(const State &state);
@@ -759,7 +753,6 @@ struct Resources : public select::SelectMap {
   void begin_sync(int clipping_plane_count)
   {
     SelectMap::begin_sync(clipping_plane_count);
-    free_movieclips_textures();
   }
 
   void acquire(const DRWContext *draw_ctx, const State &state)
@@ -852,7 +845,6 @@ struct Resources : public select::SelectMap {
     this->depth_in_front_alloc_tx.release();
     this->color_overlay_alloc_tx.release();
     this->color_render_alloc_tx.release();
-    free_movieclips_textures();
   }
 
   ThemeColorID object_wire_theme_id(const ObjectRef &ob_ref, const State &state) const
@@ -950,15 +942,6 @@ struct Resources : public select::SelectMap {
     float4 color;
     ui::theme::get_color_3fv(TH_BACK, color);
     return color;
-  }
-
-  void free_movieclips_textures()
-  {
-    /* Free Movie clip textures after rendering */
-    for (MovieClip *clip : bg_movie_clips) {
-      BKE_movieclip_free_gputexture(clip);
-    }
-    bg_movie_clips.clear();
   }
 
   static float vertex_size_get()

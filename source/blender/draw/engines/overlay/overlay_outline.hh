@@ -9,7 +9,6 @@
 #pragma once
 
 #include "overlay_base.hh"
-#include "overlay_grease_pencil.hh"
 
 #include "draw_common.hh"
 
@@ -122,7 +121,7 @@ class Outline : Overlay {
 
   void object_sync(Manager &manager,
                    const ObjectRef &ob_ref,
-                   Resources &res,
+                   Resources & /*res*/,
                    const State &state) final
   {
     if (!enabled_) {
@@ -136,22 +135,6 @@ class Outline : Overlay {
 
     Batch *geom;
     switch (ob_ref.object->type) {
-      case OB_CURVES: {
-        if (prepass_curves_ps_ != nullptr) {
-          const char *error = nullptr;
-          /* The error string will always have been printed by the engine already.
-           * No need to display it twice. */
-          geom = curves_sub_pass_setup(*prepass_curves_ps_, state.scene, ob_ref.object, error);
-          prepass_curves_ps_->draw(geom, manager.unique_handle(ob_ref));
-        }
-        break;
-      }
-      case OB_GREASE_PENCIL:
-        if (prepass_gpencil_ps_ != nullptr) {
-          GreasePencil::draw_grease_pencil(
-              res, *prepass_gpencil_ps_, state.scene, ob_ref.object, manager.unique_handle(ob_ref));
-        }
-        break;
       case OB_MESH:
         if (state.xray_enabled_and_not_wire) {
           geom = DRW_cache_mesh_edge_detection_get(ob_ref.object, nullptr);
@@ -170,25 +153,6 @@ class Outline : Overlay {
           }
         }
         break;
-      case OB_POINTCLOUD:
-        /* Looks bad in wireframe mode. Could be relaxed if we draw a wireframe of some sort in
-         * the future. */
-        if (!state.is_wireframe_mode) {
-          PassMain::Sub *ps = pointcloud_is_gsplat(ob_ref.object) ? prepass_gsplat_ps_ :
-                                                                    prepass_pointcloud_ps_;
-          ResourceHandleRange res_handle = manager.unique_handle(ob_ref);
-          geom = pointcloud_sub_pass_setup(*ps, ob_ref, res_handle);
-          ps->draw(geom, manager.unique_handle(ob_ref));
-        }
-        break;
-      case OB_VOLUME: {
-        geom = DRW_cache_volume_selection_surface_get(ob_ref.object);
-        /* TODO(fclem): Get rid of these check and enforce correct API on the batch cache. */
-        if (geom) {
-          prepass_volume_ps_->draw(geom, manager.unique_handle(ob_ref));
-        }
-        break;
-      }
       default:
         break;
     }

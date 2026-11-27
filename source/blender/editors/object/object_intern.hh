@@ -117,19 +117,10 @@ void OBJECT_OT_select_same_collection(wmOperatorType *ot);
 /* object_add.cc */
 
 void OBJECT_OT_add(wmOperatorType *ot);
-void OBJECT_OT_lattice_add_to_selected(wmOperatorType *ot);
 void OBJECT_OT_add_named(wmOperatorType *ot);
 void OBJECT_OT_transform_to_mouse(wmOperatorType *ot);
-void OBJECT_OT_metaball_add(wmOperatorType *ot);
-void OBJECT_OT_text_add(wmOperatorType *ot);
-void OBJECT_OT_armature_add(wmOperatorType *ot);
 void OBJECT_OT_empty_add(wmOperatorType *ot);
 void OBJECT_OT_empty_image_add(wmOperatorType *ot);
-void OBJECT_OT_grease_pencil_add(wmOperatorType *ot);
-void OBJECT_OT_effector_add(wmOperatorType *ot);
-void OBJECT_OT_curves_random_add(wmOperatorType *ot);
-void OBJECT_OT_curves_empty_hair_add(wmOperatorType *ot);
-void OBJECT_OT_pointcloud_random_add(wmOperatorType *ot);
 /**
  * Only used as menu.
  */
@@ -144,14 +135,6 @@ void OBJECT_OT_join(wmOperatorType *ot);
 void OBJECT_OT_join_shapes(wmOperatorType *ot);
 void OBJECT_OT_update_shapes(wmOperatorType *ot);
 void OBJECT_OT_convert(wmOperatorType *ot);
-
-/* `object_volume.cc` */
-
-void OBJECT_OT_volume_add(wmOperatorType *ot);
-/**
- * Called by other space types too.
- */
-void OBJECT_OT_volume_import(wmOperatorType *ot);
 
 /* `object_hook.cc` */
 
@@ -182,10 +165,6 @@ void OBJECT_OT_light_linking_blockers_select(wmOperatorType *ot);
 void OBJECT_OT_light_linking_blockers_link(wmOperatorType *ot);
 
 void OBJECT_OT_light_linking_unlink_from_collection(wmOperatorType *ot);
-
-/* object_camera.cc */
-
-void OBJECT_OT_camera_custom_update(wmOperatorType *ot);
 
 /* `object_modifier.cc` */
 
@@ -226,33 +205,17 @@ void OBJECT_OT_explode_refresh(wmOperatorType *ot);
 void OBJECT_OT_skin_root_mark(wmOperatorType *ot);
 void OBJECT_OT_skin_loose_mark_clear(wmOperatorType *ot);
 void OBJECT_OT_skin_radii_equalize(wmOperatorType *ot);
-void OBJECT_OT_skin_armature_create(wmOperatorType *ot);
 void OBJECT_OT_laplaciandeform_bind(wmOperatorType *ot);
 void OBJECT_OT_surfacedeform_bind(wmOperatorType *ot);
-void OBJECT_OT_geometry_nodes_input_attribute_toggle(wmOperatorType *ot);
-void OBJECT_OT_geometry_node_tree_copy_assign(wmOperatorType *ot);
-void OBJECT_OT_grease_pencil_dash_modifier_segment_add(wmOperatorType *ot);
-void OBJECT_OT_grease_pencil_dash_modifier_segment_remove(wmOperatorType *ot);
-void OBJECT_OT_grease_pencil_dash_modifier_segment_move(wmOperatorType *ot);
-void OBJECT_OT_grease_pencil_time_modifier_segment_add(wmOperatorType *ot);
-void OBJECT_OT_grease_pencil_time_modifier_segment_remove(wmOperatorType *ot);
-void OBJECT_OT_grease_pencil_time_modifier_segment_move(wmOperatorType *ot);
 
 /* `object_constraint.cc` */
 
 void OBJECT_OT_constraint_add(wmOperatorType *ot);
 void OBJECT_OT_constraint_add_with_targets(wmOperatorType *ot);
-void POSE_OT_constraint_add(wmOperatorType *ot);
-void POSE_OT_constraint_add_with_targets(wmOperatorType *ot);
 
 void OBJECT_OT_constraints_copy(wmOperatorType *ot);
-void POSE_OT_constraints_copy(wmOperatorType *ot);
 
 void OBJECT_OT_constraints_clear(wmOperatorType *ot);
-void POSE_OT_constraints_clear(wmOperatorType *ot);
-
-void POSE_OT_ik_add(wmOperatorType *ot);
-void POSE_OT_ik_clear(wmOperatorType *ot);
 
 void CONSTRAINT_OT_delete(wmOperatorType *ot);
 void CONSTRAINT_OT_apply(wmOperatorType *ot);
@@ -325,25 +288,6 @@ void OBJECT_OT_collection_link(wmOperatorType *ot);
 void OBJECT_OT_collection_remove(wmOperatorType *ot);
 void OBJECT_OT_collection_unlink(wmOperatorType *ot);
 void OBJECT_OT_collection_objects_select(wmOperatorType *ot);
-
-/* `object_bake.cc` */
-
-void OBJECT_OT_bake_image(wmOperatorType *ot);
-void OBJECT_OT_bake(wmOperatorType *ot);
-
-/* object_bake_simulation.cc */
-
-namespace bake_simulation {
-
-void OBJECT_OT_simulation_nodes_cache_calculate_to_frame(wmOperatorType *ot);
-void OBJECT_OT_simulation_nodes_cache_bake(wmOperatorType *ot);
-void OBJECT_OT_simulation_nodes_cache_delete(wmOperatorType *ot);
-void OBJECT_OT_geometry_node_bake_single(wmOperatorType *ot);
-void OBJECT_OT_geometry_node_bake_delete_single(wmOperatorType *ot);
-void OBJECT_OT_geometry_node_bake_pack_single(wmOperatorType *ot);
-void OBJECT_OT_geometry_node_bake_unpack_single(wmOperatorType *ot);
-
-}  // namespace bake_simulation
 
 /* `object_random.cc` */
 

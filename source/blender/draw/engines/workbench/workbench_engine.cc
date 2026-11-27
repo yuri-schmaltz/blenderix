@@ -9,15 +9,12 @@
 #include "BLI_rect.hh"
 #include "BLI_string.hh"
 
-#include "DNA_fluid_types.h"
-
 #include "BKE_editmesh.hh"
 #include "BKE_material.hh"
 #include "BKE_modifier.hh"
 #include "BKE_object.hh"
 #include "BKE_paint.hh"
 #include "BKE_paint_bvh.hh"
-#include "BKE_particle.h"
 #include "BKE_report.hh"
 
 #include "DEG_depsgraph_query.hh"
@@ -61,7 +58,6 @@ class Instance : public DrawEngine {
   TransparentDepthPass transparent_depth_ps_;
 
   ShadowPass shadow_ps_;
-  VolumePass volume_ps_;
   OutlinePass outline_ps_;
   DofPass dof_ps_;
   AntiAliasingPass anti_aliasing_ps_;
@@ -121,7 +117,6 @@ class Instance : public DrawEngine {
     transparent_depth_ps_.sync(scene_state_, resources_);
 
     shadow_ps_.sync(resources_);
-    volume_ps_.sync(resources_);
     outline_ps_.sync(resources_);
     dof_ps_.sync(resources_, this->draw_ctx);
     anti_aliasing_ps_.sync(scene_state_, resources_);
@@ -175,66 +170,14 @@ class Instance : public DrawEngine {
                                    OB_VISIBLE_SELF) &&
                                   (ob->dt >= OB_SOLID || draw_ctx->is_scene_render());
 
-    if (!(ob->base_flag & BASE_FROM_DUPLI)) {
-      ModifierData *md = BKE_modifiers_findby_type(ob, eModifierType_Fluid);
-      if (md && BKE_modifier_is_enabled(scene_state_.scene, md, eModifierMode_Realtime)) {
-        FluidModifierData *fmd = reinterpret_cast<FluidModifierData *>(md);
-        if (fmd->domain) {
-          volume_ps_.object_sync_modifier(manager, resources_, scene_state_, ob_ref, md);
-
-          if (fmd->domain->type == FLUID_DOMAIN_TYPE_GAS) {
-            /* Do not draw solid in this case. */
-            is_object_data_visible = false;
-          }
-        }
-      }
-    }
-
-    ResourceHandleRange emitter_handle = {};
-
     if (is_object_data_visible) {
       if (object_state.sculpt_pbvh) {
         ResourceHandleRange handle = manager.unique_handle_for_sculpt(ob_ref);
         this->sculpt_sync(manager, ob_ref, handle, object_state);
-        emitter_handle = handle;
       }
       else if (ob->type == OB_MESH) {
         ResourceHandleRange handle = manager.unique_handle(ob_ref);
         this->mesh_sync(manager, ob_ref, handle, object_state);
-        emitter_handle = handle;
-      }
-      else if (ob->type == OB_POINTCLOUD) {
-        this->pointcloud_sync(manager, ob_ref, object_state);
-      }
-      else if (ob->type == OB_CURVES) {
-        this->curves_sync(manager, ob_ref, object_state);
-      }
-      else if (ob->type == OB_VOLUME) {
-        if (scene_state_.shading.type != OB_WIRE) {
-          volume_ps_.object_sync_volume(manager,
-                                        resources_,
-                                        scene_state_,
-                                        ob_ref,
-                                        get_material(ob_ref, object_state.color_type).base_color);
-        }
-      }
-    }
-
-    if (ob->type == OB_MESH && ob->modifiers.first() != nullptr) {
-      for (ModifierData &md : ob->modifiers) {
-        if (md.type != eModifierType_ParticleSystem) {
-          continue;
-        }
-        ParticleSystem *psys = (reinterpret_cast<ParticleSystemModifierData *>(&md))->psys;
-        if (!DRW_object_is_visible_psys_in_active_context(ob, psys)) {
-          continue;
-        }
-        ParticleSettings *part = psys->part;
-        const int draw_as = (part->draw_as == PART_DRAW_REND) ? part->ren_as : part->draw_as;
-
-        if (draw_as == PART_DRAW_PATH) {
-          this->hair_sync(manager, ob_ref, emitter_handle, object_state, psys, &md);
-        }
       }
     }
   }
@@ -393,73 +336,6 @@ class Instance : public DrawEngine {
     }
   }
 
-  void pointcloud_sync(Manager &manager, ObjectRef &ob_ref, const ObjectState &object_state)
-  {
-    ResourceHandleRange handle = manager.unique_handle(ob_ref);
-
-    Material mat = this->get_material(ob_ref, object_state.color_type);
-    resources_.material_buf.append(mat);
-    int material_index = resources_.material_buf.size() - 1;
-
-    const bool is_gsplat = pointcloud_is_gsplat(ob_ref.object);
-    const bool has_transparency = mat.is_transparent();
-
-    this->draw_to_mesh_pass(ob_ref, has_transparency, [&](MeshPass &mesh_pass) {
-      PassMain::Sub &pass =
-          is_gsplat ? mesh_pass.get_subpass(eGeometryType::GSPLAT).sub("GSplatSubPass") :
-                      mesh_pass.get_subpass(eGeometryType::POINTCLOUD).sub("PointCloudSubPass");
-      draw::Batch *batch = pointcloud_sub_pass_setup(pass, ob_ref, handle);
-      pass.draw(batch, handle, material_index);
-    });
-  }
-
-  void hair_sync(Manager &manager,
-                 ObjectRef &ob_ref,
-                 ResourceHandle emitter_handle,
-                 const ObjectState &object_state,
-                 ParticleSystem *psys,
-                 ModifierData *md)
-  {
-    ResourceHandle handle = manager.resource_handle_for_psys(ob_ref,
-                                                             ob_ref.object->object_to_world());
-
-    Material mat = this->get_material(ob_ref, object_state.color_type, psys->part->omat - 1);
-    MaterialTexture texture;
-    if (object_state.color_type == V3D_SHADING_TEXTURE_COLOR) {
-      texture = MaterialTexture(manager, ob_ref.object, psys->part->omat - 1);
-    }
-    resources_.material_buf.append(mat);
-    int material_index = resources_.material_buf.size() - 1;
-
-    this->draw_to_mesh_pass(ob_ref, mat.is_transparent(), [&](MeshPass &mesh_pass) {
-      PassMain::Sub &pass =
-          mesh_pass.get_subpass(eGeometryType::CURVES, &texture).sub("Hair SubPass");
-      pass.push_constant("emitter_object_id", int(emitter_handle.raw()));
-      draw::Batch *batch = hair_sub_pass_setup(pass, scene_state_.scene, ob_ref, psys, md);
-      pass.draw(batch, {ResourceID(handle)}, material_index);
-    });
-  }
-
-  void curves_sync(Manager &manager, ObjectRef &ob_ref, const ObjectState &object_state)
-  {
-    ResourceHandleRange handle = manager.unique_handle(ob_ref);
-
-    Material mat = this->get_material(ob_ref, object_state.color_type);
-    resources_.material_buf.append(mat);
-    int material_index = resources_.material_buf.size() - 1;
-
-    this->draw_to_mesh_pass(ob_ref, mat.is_transparent(), [&](MeshPass &mesh_pass) {
-      PassMain::Sub &pass = mesh_pass.get_subpass(eGeometryType::CURVES).sub("Curves SubPass");
-
-      const char *error = nullptr;
-      draw::Batch *batch = curves_sub_pass_setup(pass, scene_state_.scene, ob_ref.object, error);
-      if (error) {
-        hair_buffer_overflow_error_ = error;
-      }
-      pass.draw(batch, handle, material_index);
-    });
-  }
-
   void draw(Manager &manager,
             gpu::Texture *depth_tx,
             gpu::Texture *depth_in_front_tx,
@@ -491,9 +367,6 @@ class Instance : public DrawEngine {
 
     anti_aliasing_ps_.setup_view(view_, scene_state_);
 
-    /* Hand off gsplat compute workload before draws. */
-    DRW_gsplat_ensure_radiance(manager, view_);
-
     GPUAttachment id_attachment = GPU_ATTACHMENT_NONE;
     if (scene_state_.draw_object_id) {
       resources_.object_id_tx.acquire_2d(resolution,
@@ -515,7 +388,6 @@ class Instance : public DrawEngine {
     transparent_ps_.draw(manager, view_, resources_, resolution);
     transparent_depth_ps_.draw(manager, view_, resources_);
 
-    volume_ps_.draw(manager, view_, resources_);
     outline_ps_.draw(manager, resources_);
     dof_ps_.draw(manager, view_, resources_, resolution);
     anti_aliasing_ps_.draw(draw_ctx, manager, view_, scene_state_, resources_, depth_in_front_tx);

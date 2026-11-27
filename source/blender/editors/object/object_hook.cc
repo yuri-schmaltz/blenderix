@@ -17,14 +17,10 @@
 #include "BLI_string_utf8.hh"
 #include "BLI_utildefines.hh"
 
-#include "DNA_armature_types.h"
-#include "DNA_curve_types.h"
-#include "DNA_lattice_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
-#include "BKE_action.hh"
 #include "BKE_context.hh"
 #include "BKE_deform.hh"
 #include "BKE_editmesh.hh"
@@ -43,7 +39,6 @@
 #include "RNA_enum_types.hh"
 #include "RNA_prototypes.hh"
 
-#include "ED_curve.hh"
 #include "ED_mesh.hh"
 #include "ED_screen.hh"
 
@@ -157,169 +152,6 @@ static void select_editbmesh_hook(Object *ob, HookModifierData *hmd)
   EDBM_select_flush_from_verts(bm, em->selectmode, true);
 }
 
-static int return_editlattice_indexar(Lattice *editlatt,
-                                      int **r_indexar,
-                                      int *r_indexar_num,
-                                      float r_cent[3])
-{
-  BPoint *bp;
-  int *index, nr, indexar_num = 0, a;
-
-  /* count */
-  a = editlatt->pntsu * editlatt->pntsv * editlatt->pntsw;
-  bp = editlatt->def;
-  while (a--) {
-    if (bp->f1 & SELECT) {
-      if (bp->hide == 0) {
-        indexar_num++;
-      }
-    }
-    bp++;
-  }
-
-  if (indexar_num == 0) {
-    return 0;
-  }
-
-  *r_indexar = index = MEM_new_array_uninitialized<int>(indexar_num, "hook indexar");
-  *r_indexar_num = indexar_num;
-  nr = 0;
-  zero_v3(r_cent);
-
-  a = editlatt->pntsu * editlatt->pntsv * editlatt->pntsw;
-  bp = editlatt->def;
-  while (a--) {
-    if (bp->f1 & SELECT) {
-      if (bp->hide == 0) {
-        *index = nr;
-        index++;
-        add_v3_v3(r_cent, bp->vec);
-      }
-    }
-    bp++;
-    nr++;
-  }
-
-  mul_v3_fl(r_cent, 1.0f / float(indexar_num));
-
-  return indexar_num;
-}
-
-static void select_editlattice_hook(Object *obedit, HookModifierData *hmd)
-{
-  Lattice *lt = id_cast<Lattice *>(obedit->data), *editlt;
-  BPoint *bp;
-  int index = 0, nr = 0, a;
-
-  editlt = lt->editlatt->latt;
-  /* count */
-  a = editlt->pntsu * editlt->pntsv * editlt->pntsw;
-  bp = editlt->def;
-  while (a--) {
-    if (hmd->indexar[index] == nr) {
-      bp->f1 |= SELECT;
-      if (index < hmd->indexar_num - 1) {
-        index++;
-      }
-    }
-    nr++;
-    bp++;
-  }
-}
-
-static int return_editcurve_indexar(Object *obedit,
-                                    int **r_indexar,
-                                    int *r_indexar_num,
-                                    float r_cent[3])
-{
-  ListBaseT<Nurb> *editnurb = object_editcurve_get(obedit);
-  BPoint *bp;
-  BezTriple *bezt;
-  int *index, a, nr, indexar_num = 0;
-
-  for (Nurb &nu : *editnurb) {
-    if (nu.type == CU_BEZIER) {
-      bezt = nu.bezt;
-      a = nu.pntsu;
-      while (a--) {
-        if (bezt->f1 & SELECT) {
-          indexar_num++;
-        }
-        if (bezt->f2 & SELECT) {
-          indexar_num++;
-        }
-        if (bezt->f3 & SELECT) {
-          indexar_num++;
-        }
-        bezt++;
-      }
-    }
-    else {
-      bp = nu.bp;
-      a = nu.pntsu * nu.pntsv;
-      while (a--) {
-        if (bp->f1 & SELECT) {
-          indexar_num++;
-        }
-        bp++;
-      }
-    }
-  }
-  if (indexar_num == 0) {
-    return 0;
-  }
-
-  *r_indexar = index = MEM_new_array_uninitialized<int>(indexar_num, "hook indexar");
-  *r_indexar_num = indexar_num;
-  nr = 0;
-  zero_v3(r_cent);
-
-  for (Nurb &nu : *editnurb) {
-    if (nu.type == CU_BEZIER) {
-      bezt = nu.bezt;
-      a = nu.pntsu;
-      while (a--) {
-        if (bezt->f1 & SELECT) {
-          *index = nr;
-          index++;
-          add_v3_v3(r_cent, bezt->vec[0]);
-        }
-        nr++;
-        if (bezt->f2 & SELECT) {
-          *index = nr;
-          index++;
-          add_v3_v3(r_cent, bezt->vec[1]);
-        }
-        nr++;
-        if (bezt->f3 & SELECT) {
-          *index = nr;
-          index++;
-          add_v3_v3(r_cent, bezt->vec[2]);
-        }
-        nr++;
-        bezt++;
-      }
-    }
-    else {
-      bp = nu.bp;
-      a = nu.pntsu * nu.pntsv;
-      while (a--) {
-        if (bp->f1 & SELECT) {
-          *index = nr;
-          index++;
-          add_v3_v3(r_cent, bp->vec);
-        }
-        nr++;
-        bp++;
-      }
-    }
-  }
-
-  mul_v3_fl(r_cent, 1.0f / float(indexar_num));
-
-  return indexar_num;
-}
-
 static bool object_hook_index_array(Main *bmain,
                                     Scene *scene,
                                     Object *obedit,
@@ -332,91 +164,25 @@ static bool object_hook_index_array(Main *bmain,
   *r_indexar_num = 0;
   r_name[0] = 0;
 
-  switch (obedit->type) {
-    case OB_MESH: {
-      Mesh *mesh = id_cast<Mesh *>(obedit->data);
+  if (obedit->type == OB_MESH) {
+    Mesh *mesh = id_cast<Mesh *>(obedit->data);
 
-      EDBM_mesh_load(bmain, obedit);
-      EDBM_mesh_make(obedit, scene->toolsettings->selectmode, true);
+    EDBM_mesh_load(bmain, obedit);
+    EDBM_mesh_make(obedit, scene->toolsettings->selectmode, true);
 
-      DEG_id_tag_update(obedit->data, 0);
+    DEG_id_tag_update(obedit->data, 0);
 
-      EditMesh *em = mesh->runtime->edit_mesh.get();
+    EditMesh *em = mesh->runtime->edit_mesh.get();
 
-      BKE_editmesh_looptris_and_normals_calc(em, BKE_editmesh_bmesh_ensure(mesh));
+    BKE_editmesh_looptris_and_normals_calc(em, BKE_editmesh_bmesh_ensure(mesh));
 
-      /* check selected vertices first */
-      if (return_editmesh_indexar(*mesh, r_indexar_num, r_indexar, r_cent) == 0) {
-        return return_editmesh_vgroup(obedit, *mesh, r_name, r_cent);
-      }
-      return true;
+    /* check selected vertices first */
+    if (return_editmesh_indexar(*mesh, r_indexar_num, r_indexar, r_cent) == 0) {
+      return return_editmesh_vgroup(obedit, *mesh, r_name, r_cent);
     }
-    case OB_CURVES_LEGACY:
-    case OB_SURF:
-      ED_curve_editnurb_load(bmain, obedit);
-      ED_curve_editnurb_make(obedit);
-      return return_editcurve_indexar(obedit, r_indexar, r_indexar_num, r_cent);
-    case OB_LATTICE: {
-      Lattice *lt = id_cast<Lattice *>(obedit->data);
-      return return_editlattice_indexar(lt->editlatt->latt, r_indexar, r_indexar_num, r_cent);
-    }
-    default:
-      return false;
+    return true;
   }
-}
-
-static void select_editcurve_hook(Object *obedit, HookModifierData *hmd)
-{
-  ListBaseT<Nurb> *editnurb = object_editcurve_get(obedit);
-  BPoint *bp;
-  BezTriple *bezt;
-  int index = 0, a, nr = 0;
-
-  for (Nurb &nu : *editnurb) {
-    if (nu.type == CU_BEZIER) {
-      bezt = nu.bezt;
-      a = nu.pntsu;
-      while (a--) {
-        if (nr == hmd->indexar[index]) {
-          bezt->f1 |= BEZT_FLAG_SELECT;
-          if (index < hmd->indexar_num - 1) {
-            index++;
-          }
-        }
-        nr++;
-        if (nr == hmd->indexar[index]) {
-          bezt->f2 |= BEZT_FLAG_SELECT;
-          if (index < hmd->indexar_num - 1) {
-            index++;
-          }
-        }
-        nr++;
-        if (nr == hmd->indexar[index]) {
-          bezt->f3 |= BEZT_FLAG_SELECT;
-          if (index < hmd->indexar_num - 1) {
-            index++;
-          }
-        }
-        nr++;
-
-        bezt++;
-      }
-    }
-    else {
-      bp = nu.bp;
-      a = nu.pntsu * nu.pntsv;
-      while (a--) {
-        if (nr == hmd->indexar[index]) {
-          bp->f1 |= SELECT;
-          if (index < hmd->indexar_num - 1) {
-            index++;
-          }
-        }
-        nr++;
-        bp++;
-      }
-    }
-  }
+  return false;
 }
 
 static void object_hook_from_context(
@@ -453,15 +219,6 @@ static void object_hook_select(Object *ob, HookModifierData *hmd)
   if (ob->type == OB_MESH) {
     select_editbmesh_hook(ob, hmd);
   }
-  else if (ob->type == OB_LATTICE) {
-    select_editlattice_hook(ob, hmd);
-  }
-  else if (ob->type == OB_CURVES_LEGACY) {
-    select_editcurve_hook(ob, hmd);
-  }
-  else if (ob->type == OB_SURF) {
-    select_editcurve_hook(ob, hmd);
-  }
 }
 
 /* special poll operators for hook operators */
@@ -474,13 +231,6 @@ static bool hook_op_edit_poll(bContext *C)
     if (ED_operator_editmesh(C)) {
       return true;
     }
-    if (ED_operator_editsurfcurve(C)) {
-      return true;
-    }
-    if (ED_operator_editlattice(C)) {
-      return true;
-    }
-    // if (ED_operator_editmball(C)) return true;
   }
 
   return false;
@@ -563,23 +313,8 @@ static int add_hook_object(const bContext *C,
   }
 
   if (mode == OBJECT_ADDHOOK_SELOB_BONE) {
-    bArmature *arm = id_cast<bArmature *>(ob->data);
-    BLI_assert(ob->type == OB_ARMATURE);
-    if (arm->act_bone) {
-      bPoseChannel *pchan_act;
-
-      STRNCPY_UTF8(hmd->subtarget, arm->act_bone->name);
-
-      pchan_act = BKE_pose_channel_active_if_bonecoll_visible(ob);
-      if (pchan_act) [[likely]] {
-        invert_m4_m4(pose_mat, pchan_act->pose_mat);
-        mul_v3_m4v3(cent, ob->object_to_world().ptr(), pchan_act->pose_mat[3]);
-        mul_v3_m4v3(cent, obedit->world_to_object().ptr(), cent);
-      }
-    }
-    else {
-      BKE_report(reports, RPT_WARNING, "Armature has no active object bone");
-    }
+    BKE_report(reports, RPT_WARNING, "Armature hooks are not supported in BlenderiX");
+    return false;
   }
 
   copy_v3_v3(hmd->cent, cent);

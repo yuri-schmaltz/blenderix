@@ -72,24 +72,8 @@ void Instance::init()
     state.vignette_enabled = ctx->mode == DRWContext::VIEWPORT_XR &&
                              state.v3d->xr_vignette_aperture < M_SQRT1_2;
 
-    const bool viewport_uses_workbench = state.v3d->shading.type <= OB_SOLID ||
-                                         BKE_scene_uses_blender_workbench(state.scene);
-    const RenderEngineType *engine_type = ED_view3d_engine_type(state.scene,
-                                                                state.v3d->shading.type);
-    const bool viewport_uses_eevee = STREQ(engine_type->idname, RE_engine_id_BLENDER_EEVEE);
-    const bool viewport_engine_provides_depth = engine_type->flag & RE_WRITE_VIEWPORT_DEPTH;
-    const bool use_resolution_scaling = BKE_render_preview_pixel_size(&state.scene->r) != 1;
-    /* Only workbench ensures the depth buffer is matching overlays.
-     * Force depth prepass for other render engines,
-     * unless they declared their depth information should be used.
-     * EEVEE is an exception (if not using mixed resolution) to avoid a significant overhead. */
-    state.is_render_depth_available = viewport_uses_workbench ||
-                                      (viewport_uses_eevee && !use_resolution_scaling) ||
-                                      viewport_engine_provides_depth;
-
-    /* For depth only drawing, no other render engine is expected. Except for Grease Pencil which
-     * outputs valid depth. Otherwise depth is cleared and is valid. */
-    state.is_render_depth_available |= state.is_depth_only_drawing;
+    const bool viewport_uses_workbench = true;
+    state.is_render_depth_available = viewport_uses_workbench || state.is_depth_only_drawing;
 
     if (!state.hide_overlays) {
       state.overlay = state.v3d->overlay;
@@ -125,14 +109,7 @@ void Instance::init()
     state.xray_enabled = false;
     /* Avoid triggering the depth prepass. */
     state.is_render_depth_available = true;
-
-    /* During engine initialization phase the `space_image` isn't locked and we are able to
-     * retrieve the needed data. During cache_init the image engine locks the `space_image` and
-     * makes it impossible to retrieve the data. */
     state.is_image_valid = bool(space_image->image);
-    ED_space_image_get_uv_aspect(space_image, &state.image_uv_aspect.x, &state.image_uv_aspect.y);
-    ED_space_image_get_size(space_image, &state.image_size.x, &state.image_size.y);
-    ED_space_image_get_aspect(space_image, &state.image_aspect.x, &state.image_aspect.y);
   }
 
   resources.update_theme_settings(ctx, state);
@@ -466,40 +443,26 @@ void Instance::begin_sync()
   background.begin_sync(resources, state);
   cursor.begin_sync(resources, state);
   image_prepass.begin_sync(resources, state);
-  motion_paths.begin_sync(resources, state);
   origins.begin_sync(resources, state);
   outline.begin_sync(resources, state);
 
   auto begin_sync_layer = [&](OverlayLayer &layer) {
-    layer.armatures.begin_sync(resources, state);
     layer.attribute_viewer.begin_sync(resources, state);
     layer.attribute_texts.begin_sync(resources, state);
     layer.axes.begin_sync(resources, state);
     layer.bounds.begin_sync(resources, state);
     layer.cameras.begin_sync(resources, state);
-    layer.curves.begin_sync(resources, state);
-    layer.text.begin_sync(resources, state);
     layer.empties.begin_sync(resources, state);
     layer.facing.begin_sync(resources, state);
     layer.fade.begin_sync(resources, state);
-    layer.force_fields.begin_sync(resources, state);
-    layer.fluids.begin_sync(resources, state);
-    layer.grease_pencil.begin_sync(resources, state);
-    layer.gsplats.begin_sync(resources, state);
-    layer.lattices.begin_sync(resources, state);
     layer.lights.begin_sync(resources, state);
     layer.light_probes.begin_sync(resources, state);
-    layer.metaballs.begin_sync(resources, state);
     layer.meshes.begin_sync(resources, state);
-    layer.mesh_uvs.begin_sync(resources, state);
     layer.mode_transfer.begin_sync(resources, state);
     layer.names.begin_sync(resources, state);
     layer.paints.begin_sync(resources, state);
-    layer.particles.begin_sync(resources, state);
-    layer.pointclouds.begin_sync(resources, state);
     layer.prepass.begin_sync(resources, state);
     layer.relations.begin_sync(resources, state);
-    layer.speakers.begin_sync(resources, state);
     layer.sculpts.begin_sync(resources, state);
     layer.wireframe.begin_sync(resources, state);
   };
@@ -513,11 +476,9 @@ void Instance::begin_sync()
 
 void Instance::object_sync(ObjectRef &ob_ref, Manager &manager)
 {
-  const bool in_object_mode = ob_ref.object->mode == OB_MODE_OBJECT;
   const bool in_edit_mode = ob_ref.object->mode == OB_MODE_EDIT;
   const bool in_paint_mode = object_is_paint_mode(ob_ref.object);
   const bool in_sculpt_mode = object_is_sculpt_mode(ob_ref);
-  const bool in_particle_edit_mode = object_is_particle_edit_mode(ob_ref);
   const bool in_edit_paint_mode = object_is_edit_paint_mode(
       ob_ref, in_edit_mode, in_paint_mode, in_sculpt_mode);
   const bool needs_prepass = object_needs_prepass(ob_ref, in_paint_mode);
@@ -530,34 +491,10 @@ void Instance::object_sync(ObjectRef &ob_ref, Manager &manager)
     layer.prepass.object_sync(manager, ob_ref, resources, state);
   }
 
-  if (in_particle_edit_mode) {
-    layer.particles.edit_object_sync(manager, ob_ref, resources, state);
-  }
-
-  /* For 2D UV overlays. */
-  if (!state.hide_overlays && state.is_space_image()) {
-    switch (ob_ref.object->type) {
-      case OB_MESH:
-        if (in_edit_paint_mode) {
-          /* TODO(fclem): Find a better place / condition. */
-          layer.mesh_uvs.edit_object_sync(manager, ob_ref, resources, state);
-        }
-        else if (in_object_mode) {
-          layer.mesh_uvs.object_sync(manager, ob_ref, resources, state);
-        }
-      default:
-        break;
-    }
-  }
-
   if (in_paint_mode && !state.hide_overlays) {
     switch (ob_ref.object->type) {
       case OB_MESH:
-        /* TODO(fclem): Make it part of a #Meshes. */
         layer.paints.object_sync(manager, ob_ref, resources, state);
-        break;
-      case OB_GREASE_PENCIL:
-        layer.grease_pencil.paint_object_sync(manager, ob_ref, resources, state);
         break;
       default:
         break;
@@ -567,12 +504,7 @@ void Instance::object_sync(ObjectRef &ob_ref, Manager &manager)
   if (in_sculpt_mode) {
     switch (ob_ref.object->type) {
       case OB_MESH:
-      case OB_CURVES:
-        /* TODO(fclem): Make it part of a #Meshes. */
         layer.sculpts.object_sync(manager, ob_ref, resources, state);
-        break;
-      case OB_GREASE_PENCIL:
-        layer.grease_pencil.sculpt_object_sync(manager, ob_ref, resources, state);
         break;
       default:
         break;
@@ -583,37 +515,6 @@ void Instance::object_sync(ObjectRef &ob_ref, Manager &manager)
     switch (ob_ref.object->type) {
       case OB_MESH:
         layer.meshes.edit_object_sync(manager, ob_ref, resources, state);
-        break;
-      case OB_ARMATURE:
-        layer.armatures.edit_object_sync(manager, ob_ref, resources, state);
-        break;
-      case OB_SURF:
-      case OB_CURVES_LEGACY:
-        layer.curves.edit_object_sync_legacy(manager, ob_ref, resources);
-        break;
-      case OB_CURVES:
-        layer.curves.edit_object_sync(manager, ob_ref, resources, state);
-        break;
-      case OB_LATTICE:
-        layer.lattices.edit_object_sync(manager, ob_ref, resources, state);
-        break;
-      case OB_MBALL:
-        layer.metaballs.edit_object_sync(manager, ob_ref, resources, state);
-        break;
-      case OB_POINTCLOUD: {
-        PointCloud &pointcloud = DRW_object_get_data_for_drawing<PointCloud>(*ob_ref.object);
-        if (pointcloud.type == PointCloudType::GSplat) {
-          layer.gsplats.edit_object_sync(manager, ob_ref, resources, state);
-        }
-        else {
-          layer.pointclouds.edit_object_sync(manager, ob_ref, resources, state);
-        }
-      } break;
-      case OB_FONT:
-        layer.text.edit_object_sync(manager, ob_ref, resources, state);
-        break;
-      case OB_GREASE_PENCIL:
-        layer.grease_pencil.edit_object_sync(manager, ob_ref, resources, state);
         break;
       default:
         break;
@@ -633,32 +534,11 @@ void Instance::object_sync(ObjectRef &ob_ref, Manager &manager)
       case OB_CAMERA:
         layer.cameras.object_sync(manager, ob_ref, resources, state);
         break;
-      case OB_ARMATURE:
-        if (!in_edit_mode) {
-          layer.armatures.object_sync(manager, ob_ref, resources, state);
-        }
-        break;
-      case OB_LATTICE:
-        if (!in_edit_mode) {
-          layer.lattices.object_sync(manager, ob_ref, resources, state);
-        }
-        break;
       case OB_LAMP:
         layer.lights.object_sync(manager, ob_ref, resources, state);
         break;
       case OB_LIGHTPROBE:
         layer.light_probes.object_sync(manager, ob_ref, resources, state);
-        break;
-      case OB_MBALL:
-        if (!in_edit_mode) {
-          layer.metaballs.object_sync(manager, ob_ref, resources, state);
-        }
-        break;
-      case OB_GREASE_PENCIL:
-        layer.grease_pencil.object_sync(manager, ob_ref, resources, state);
-        break;
-      case OB_SPEAKER:
-        layer.speakers.object_sync(manager, ob_ref, resources, state);
         break;
       default:
         break;
@@ -668,14 +548,10 @@ void Instance::object_sync(ObjectRef &ob_ref, Manager &manager)
     layer.bounds.object_sync(manager, ob_ref, resources, state);
     layer.facing.object_sync(manager, ob_ref, resources, state);
     layer.fade.object_sync(manager, ob_ref, resources, state);
-    layer.force_fields.object_sync(manager, ob_ref, resources, state);
-    layer.fluids.object_sync(manager, ob_ref, resources, state);
-    layer.particles.object_sync(manager, ob_ref, resources, state);
     layer.relations.object_sync(manager, ob_ref, resources, state);
     layer.axes.object_sync(manager, ob_ref, resources, state);
     layer.names.object_sync(manager, ob_ref, resources, state);
 
-    motion_paths.object_sync(manager, ob_ref, resources, state);
     origins.object_sync(manager, ob_ref, resources, state);
 
     if (object_is_selected(ob_ref) && !in_edit_paint_mode) {
@@ -690,20 +566,13 @@ void Instance::end_sync()
   resources.end_sync();
 
   auto end_sync_layer = [&](OverlayLayer &layer) {
-    layer.armatures.end_sync(resources, state);
     layer.axes.end_sync(resources, state);
     layer.bounds.end_sync(resources, state);
     layer.cameras.end_sync(resources, state);
-    layer.text.end_sync(resources, state);
     layer.empties.end_sync(resources, state);
-    layer.force_fields.end_sync(resources, state);
     layer.lights.end_sync(resources, state);
     layer.light_probes.end_sync(resources, state);
-    layer.mesh_uvs.end_sync(resources, state);
-    layer.metaballs.end_sync(resources, state);
     layer.relations.end_sync(resources, state);
-    layer.fluids.end_sync(resources, state);
-    layer.speakers.end_sync(resources, state);
   };
   end_sync_layer(regular);
   end_sync_layer(infront);
@@ -759,11 +628,6 @@ void Instance::draw(Manager &manager)
   resources.pre_draw();
 
   outline.flat_objects_pass_sync(manager, view, resources, state);
-  GreasePencil::compute_depth_planes(manager, view, resources, state);
-
-  /* Hand off gsplat compute workload before draws. */
-  /* TODO(not_mark): Disabled compute pass for now, due to incompatibility with instancing. */
-  /* DRW_gsplat_ensure_ellipses(manager, view); */
 
   /* Pre-Draw: Run the compute steps of all passes up-front
    * to avoid constant GPU compute/raster context switching. */
@@ -776,11 +640,7 @@ void Instance::draw(Manager &manager)
       layer.empties.pre_draw(manager, view);
       layer.facing.pre_draw(manager, view);
       layer.fade.pre_draw(manager, view);
-      layer.lattices.pre_draw(manager, view);
-      layer.gsplats.pre_draw(manager, view);
       layer.light_probes.pre_draw(manager, view);
-      layer.particles.pre_draw(manager, view);
-      layer.pointclouds.pre_draw(manager, view);
       layer.prepass.pre_draw(manager, view);
       layer.wireframe.pre_draw(manager, view);
     };
@@ -837,14 +697,12 @@ void Instance::draw_node(Manager &manager, View &view)
 void Instance::draw_v2d(Manager &manager, View &view)
 {
   image_prepass.draw_on_render(resources.render_fb, manager, view);
-  regular.mesh_uvs.draw_on_render(resources.render_fb, manager, view);
 
   GPU_framebuffer_bind(resources.overlay_output_color_only_fb);
   GPU_framebuffer_clear_color(resources.overlay_output_color_only_fb, double4(0.0));
 
   background.draw_output(resources.overlay_output_color_only_fb, manager, view);
   grid.draw_line(resources.overlay_output_fb, manager, view);
-  regular.mesh_uvs.draw(resources.overlay_output_fb, manager, view);
 
   draw_text(resources.overlay_output_color_only_fb);
 
@@ -856,13 +714,9 @@ void Instance::draw_v3d(Manager &manager, View &view)
   double4 clear_color(0.0f);
 
   auto draw = [&](OverlayLayer &layer, Framebuffer &framebuffer) {
-    /* TODO(fclem): Depth aware outlines (see #130751). */
-    // layer.facing.draw(framebuffer, manager, view);
     layer.fade.draw(framebuffer, manager, view);
     layer.mode_transfer.draw(framebuffer, manager, view);
-    layer.text.draw(framebuffer, manager, view);
     layer.paints.draw(framebuffer, manager, view);
-    layer.particles.draw(framebuffer, manager, view);
   };
 
   auto draw_line = [&](OverlayLayer &layer, Framebuffer &framebuffer) {
@@ -871,24 +725,11 @@ void Instance::draw_v3d(Manager &manager, View &view)
     layer.cameras.draw_line(framebuffer, manager, view);
     layer.empties.draw_line(framebuffer, manager, view);
     layer.axes.draw_line(framebuffer, manager, view);
-    layer.force_fields.draw_line(framebuffer, manager, view);
-    layer.gsplats.draw_line(framebuffer, manager, view);
     layer.lights.draw_line(framebuffer, manager, view);
     layer.light_probes.draw_line(framebuffer, manager, view);
-    layer.speakers.draw_line(framebuffer, manager, view);
-    layer.lattices.draw_line(framebuffer, manager, view);
-    layer.metaballs.draw_line(framebuffer, manager, view);
-    layer.pointclouds.draw_line(framebuffer, manager, view);
     layer.relations.draw_line(framebuffer, manager, view);
-    layer.fluids.draw_line(framebuffer, manager, view);
-    layer.particles.draw_line(framebuffer, manager, view);
     layer.attribute_viewer.draw_line(framebuffer, manager, view);
-    layer.armatures.draw_line(framebuffer, manager, view);
     layer.sculpts.draw_line(framebuffer, manager, view);
-    layer.grease_pencil.draw_line(framebuffer, manager, view);
-    /* NOTE: Temporarily moved after grid drawing (See #136764). */
-    // layer.meshes.draw_line(framebuffer, manager, view);
-    layer.curves.draw_line(framebuffer, manager, view);
   };
 
   auto draw_line_only = [&](OverlayLayer &layer, Framebuffer &framebuffer) {
@@ -897,8 +738,6 @@ void Instance::draw_v3d(Manager &manager, View &view)
 
   auto draw_color_only = [&](OverlayLayer &layer, Framebuffer &framebuffer) {
     layer.light_probes.draw_color_only(framebuffer, manager, view);
-    layer.curves.draw_color_only(framebuffer, manager, view);
-    layer.grease_pencil.draw_color_only(framebuffer, manager, view);
   };
 
   {
@@ -953,10 +792,6 @@ void Instance::draw_v3d(Manager &manager, View &view)
     infront.wireframe.copy_depth(resources.depth_target_in_front_tx);
   }
   {
-    /* TODO(fclem): This is really bad for performance as the outline pass will then split the
-     * render pass and do a framebuffer switch. This also only fix the issue for non-infront
-     * objects.
-     * We need to figure a way to merge the outline with correct depth awareness (see #130751). */
     regular.facing.draw(resources.overlay_fb, manager, view);
 
     /* Line only pass. */
@@ -980,7 +815,6 @@ void Instance::draw_v3d(Manager &manager, View &view)
   }
   {
     /* Color only pass. */
-    motion_paths.draw_color_only(resources.overlay_color_only_fb, manager, view);
     xray_fade.draw_color_only(resources.overlay_color_only_fb, manager, view);
 
     regular.meshes.draw_line(resources.overlay_line_fb, manager, view);
@@ -1127,13 +961,7 @@ bool Instance::object_is_edit_mode(const Object *object)
 
 bool Instance::object_is_in_front(const Object *object, const State &state)
 {
-  switch (object->type) {
-    case OB_ARMATURE:
-      return (object->dtx & OB_DRAW_IN_FRONT) ||
-             (state.do_pose_xray && Armatures::is_pose_mode(object, state));
-    default:
-      return state.use_in_front && (object->dtx & OB_DRAW_IN_FRONT);
-  }
+  return state.use_in_front && (object->dtx & OB_DRAW_IN_FRONT);
 }
 
 bool Instance::object_needs_prepass(const ObjectRef &ob_ref, bool in_paint_mode)

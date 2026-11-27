@@ -11,7 +11,6 @@
 #include "overlay_private.hh"
 
 #include "overlay_antialiasing.hh"
-#include "overlay_armature.hh"
 #include "overlay_attribute_text.hh"
 #include "overlay_attribute_viewer.hh"
 #include "overlay_axes.hh"
@@ -19,33 +18,21 @@
 #include "overlay_bounds.hh"
 #include "overlay_camera.hh"
 #include "overlay_cursor.hh"
-#include "overlay_curve.hh"
 #include "overlay_empty.hh"
 #include "overlay_facing.hh"
 #include "overlay_fade.hh"
-#include "overlay_fluid.hh"
-#include "overlay_force_field.hh"
-#include "overlay_grease_pencil.hh"
 #include "overlay_grid.hh"
-#include "overlay_gsplat.hh"
-#include "overlay_lattice.hh"
 #include "overlay_light.hh"
 #include "overlay_lightprobe.hh"
 #include "overlay_mesh.hh"
-#include "overlay_metaball.hh"
 #include "overlay_mode_transfer.hh"
-#include "overlay_motion_path.hh"
 #include "overlay_name.hh"
 #include "overlay_origin.hh"
 #include "overlay_outline.hh"
 #include "overlay_paint.hh"
-#include "overlay_particle.hh"
-#include "overlay_pointcloud.hh"
 #include "overlay_prepass.hh"
 #include "overlay_relation.hh"
 #include "overlay_sculpt.hh"
-#include "overlay_speaker.hh"
-#include "overlay_text.hh"
 #include "overlay_wireframe.hh"
 #include "overlay_xray_fade.hh"
 
@@ -71,41 +58,27 @@ class Instance : public DrawEngine {
   ImagePrepass image_prepass;
   Origins origins = {selection_type_};
   Outline outline;
-  MotionPath motion_paths;
   Cursor cursor;
 
   struct OverlayLayer {
     const SelectionType selection_type_;
-    Armatures armatures = {selection_type_};
     AttributeViewer attribute_viewer;
     AttributeTexts attribute_texts;
     Axes axes = {selection_type_};
     Bounds bounds = {selection_type_};
     Cameras cameras = {selection_type_};
-    Curves curves;
-    Text text = {selection_type_};
     Empties empties = {selection_type_};
     Facing facing;
     Fade fade;
-    Fluids fluids = {selection_type_};
-    ForceFields force_fields = {selection_type_};
-    GreasePencil grease_pencil;
-    Lattices lattices;
     Lights lights = {selection_type_};
     LightProbes light_probes = {selection_type_};
     Meshes meshes;
-    MeshUVs mesh_uvs;
-    Metaballs metaballs = {selection_type_};
     ModeTransfer mode_transfer;
     Names names;
     Paints paints;
-    Particles particles;
-    GSplats gsplats;
-    PointClouds pointclouds;
     Prepass prepass;
     Relations relations = {selection_type_};
     Sculpts sculpts;
-    Speakers speakers = {selection_type_};
     Wireframe wireframe;
   } regular{selection_type_}, infront{selection_type_};
 

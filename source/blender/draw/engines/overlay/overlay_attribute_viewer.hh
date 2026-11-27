@@ -136,27 +136,6 @@ class AttributeViewer : Overlay {
         }
         break;
       }
-      case OB_POINTCLOUD: {
-        auto &sub = *instance_sub_;
-        ResourceHandleRange res_handle = manager.unique_handle(ob_ref);
-        Batch *batch = pointcloud_sub_pass_setup(sub, ob_ref, res_handle, nullptr);
-        sub.push_constant("ucolor", float4(color));
-        sub.draw(batch, res_handle);
-        break;
-      }
-      case OB_CURVES_LEGACY: {
-        Batch *batch = DRW_cache_curve_edge_wire_get(&object);
-        auto &sub = *instance_sub_;
-        sub.push_constant("ucolor", float4(color));
-        ResourceHandleRange res_handle = manager.unique_handle(ob_ref);
-        sub.draw(batch, res_handle);
-        break;
-      }
-      case OB_CURVES: {
-        /* Not supported yet because instances of this type are currently drawn as legacy curves.
-         */
-        break;
-      }
       default:
         break;
     }
@@ -182,72 +161,6 @@ class AttributeViewer : Overlay {
             auto &sub = *mesh_sub_;
             sub.push_constant("opacity", opacity);
             sub.draw(batch, manager.unique_handle(ob_ref));
-          }
-        }
-        break;
-      }
-      case OB_POINTCLOUD: {
-        PointCloud &pointcloud = DRW_object_get_data_for_drawing<PointCloud>(object);
-        if (const std::optional<bke::AttributeMetaData> meta_data =
-                pointcloud.attributes().lookup_meta_data(".viewer"))
-        {
-          if (attribute_type_supports_viewer_overlay(meta_data->data_type)) {
-            gpu::VertBuf **vertbuf = DRW_pointcloud_evaluated_attribute(&pointcloud, ".viewer");
-
-            /* Avoid trying to bind an empty `vertbuf` which causes assert / undefined behavior. */
-            if (pointcloud.totpoint > 0 && vertbuf != nullptr) {
-              ResourceHandleRange res_handle = manager.unique_handle(ob_ref);
-              auto &sub = (pointcloud.type == PointCloudType::GSplat) ? *gsplat_sub_ :
-                                                                        *pointcloud_sub_;
-              Batch *batch = pointcloud_sub_pass_setup(sub, ob_ref, res_handle, nullptr);
-              sub.push_constant("opacity", opacity);
-              sub.bind_texture("attribute_tx", vertbuf);
-              sub.draw(batch, res_handle);
-            }
-          }
-        }
-        break;
-      }
-      case OB_CURVES_LEGACY: {
-        Curve &curve = DRW_object_get_data_for_drawing<Curve>(object);
-        if (curve.curve_eval) {
-          const bke::CurvesGeometry &curves = curve.curve_eval->geometry.wrap();
-          if (const std::optional<bke::AttributeMetaData> meta_data =
-                  curves.attributes().lookup_meta_data(".viewer"))
-          {
-            if (attribute_type_supports_viewer_overlay(meta_data->data_type)) {
-              Batch *batch = DRW_cache_curve_edge_wire_viewer_attribute_get(&object);
-              auto &sub = *curve_sub_;
-              sub.push_constant("opacity", opacity);
-              ResourceHandleRange res_handle = manager.unique_handle(ob_ref);
-              sub.draw(batch, res_handle);
-            }
-          }
-        }
-        break;
-      }
-      case OB_CURVES: {
-        blender::Curves &curves_id = DRW_object_get_data_for_drawing<blender::Curves>(object);
-        const bke::CurvesGeometry &curves = curves_id.geometry.wrap();
-        if (const std::optional<bke::AttributeMetaData> meta_data =
-                curves.attributes().lookup_meta_data(".viewer"))
-        {
-          if (attribute_type_supports_viewer_overlay(meta_data->data_type)) {
-            bool is_point_domain;
-            bool is_valid;
-            gpu::VertBufPtr &texture = DRW_curves_texture_for_evaluated_attribute(
-                &curves_id, ".viewer", is_point_domain, is_valid);
-            if (is_valid) {
-              auto &sub = *curves_sub_;
-              const char *error = nullptr;
-              /* The error string will always have been printed by the engine already.
-               * No need to display it twice. */
-              Batch *batch = curves_sub_pass_setup(sub, state.scene, ob_ref.object, error);
-              sub.push_constant("opacity", opacity);
-              sub.push_constant("is_point_domain", is_point_domain);
-              sub.bind_texture("color_tx", texture);
-              sub.draw(batch, manager.unique_handle(ob_ref));
-            }
           }
         }
         break;

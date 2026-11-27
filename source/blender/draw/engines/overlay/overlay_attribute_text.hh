@@ -79,25 +79,6 @@ class AttributeTexts : Overlay {
         add_mesh_attributes_to_text_cache(state, mesh, object_to_world);
         break;
       }
-      case OB_POINTCLOUD: {
-        const PointCloud &pointcloud = DRW_object_get_data_for_drawing<PointCloud>(object);
-        add_attributes_to_text_cache(dt, pointcloud.attributes(), object_to_world);
-        break;
-      }
-      case OB_CURVES_LEGACY: {
-        const Curve &curve = DRW_object_get_data_for_drawing<Curve>(object);
-        if (curve.curve_eval) {
-          const bke::CurvesGeometry &curves = curve.curve_eval->geometry.wrap();
-          add_attributes_to_text_cache(dt, curves.attributes(), object_to_world);
-        }
-        break;
-      }
-      case OB_CURVES: {
-        const Curves &curves_id = DRW_object_get_data_for_drawing<Curves>(object);
-        const bke::CurvesGeometry &curves = curves_id.geometry.wrap();
-        add_attributes_to_text_cache(dt, curves.attributes(), object_to_world);
-        break;
-      }
       default:
         break;
     }

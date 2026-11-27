@@ -9,27 +9,19 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "DNA_armature_types.h"
-#include "DNA_curve_types.h"
-#include "DNA_lattice_types.h"
-#include "DNA_meta_types.h"
 #include "DNA_object_types.h"
 
 #include "BLI_listbase.hh"
 #include "BLI_math_matrix_c.hh"
 #include "BLI_math_vector_c.hh"
 
-#include "BKE_action.hh"
-#include "BKE_armature.hh"
 #include "BKE_editmesh.hh"
-#include "BKE_lattice.hh"
 #include "BKE_layer.hh"
 #include "BKE_object.hh"
 #include "BKE_scene.hh"
 
 #include "DEG_depsgraph_query.hh"
 
-#include "ED_curve.hh"
 #include "ED_object.hh" /* own include */
 
 #include "WM_api.hh"
@@ -61,78 +53,24 @@ bool material_active_index_set(Object *ob, const int index)
 /** \name Active Element Center
  * \{ */
 
-bool calc_active_center_for_editmode(Object *obedit, const bool select_only, float r_center[3])
+bool calc_active_center_for_editmode(Object *obedit, const bool /*select_only*/, float r_center[3])
 {
-  switch (obedit->type) {
-    case OB_MESH: {
-      BMesh *bm = BKE_editmesh_bmesh_ensure(obedit);
-      BMEditSelection ese;
+  if (obedit->type == OB_MESH) {
+    BMesh *bm = BKE_editmesh_bmesh_ensure(obedit);
+    BMEditSelection ese;
 
-      if (BM_select_history_active_get(bm, &ese)) {
-        BM_editselection_center(&ese, r_center);
-        return true;
-      }
-      break;
-    }
-    case OB_ARMATURE: {
-      bArmature *arm = id_cast<bArmature *>(obedit->data);
-      EditBone *ebo = arm->act_edbone;
-
-      if (ebo && (!select_only || (ebo->flag & (BONE_SELECTED | BONE_ROOTSEL)))) {
-        copy_v3_v3(r_center, ebo->head);
-        return true;
-      }
-
-      break;
-    }
-    case OB_CURVES_LEGACY:
-    case OB_SURF: {
-      Curve *cu = id_cast<Curve *>(obedit->data);
-
-      if (ED_curve_active_center(cu, r_center)) {
-        return true;
-      }
-      break;
-    }
-    case OB_MBALL: {
-      MetaBall *mb = id_cast<MetaBall *>(obedit->data);
-      MetaElem *ml_act = mb->lastelem;
-
-      if (ml_act && (!select_only || (ml_act->flag & SELECT))) {
-        copy_v3_v3(r_center, &ml_act->x);
-        return true;
-      }
-      break;
-    }
-    case OB_LATTICE: {
-      BPoint *actbp = BKE_lattice_active_point_get(id_cast<Lattice *>(obedit->data));
-
-      if (actbp) {
-        copy_v3_v3(r_center, actbp->vec);
-        return true;
-      }
-      break;
-    }
-    case OB_GREASE_PENCIL: {
-      copy_v3_v3(r_center, obedit->loc);
-      mul_m4_v3(obedit->world_to_object().ptr(), r_center);
+    if (BM_select_history_active_get(bm, &ese)) {
+      BM_editselection_center(&ese, r_center);
       return true;
     }
-    default:
-      break;
   }
-
   return false;
 }
 
-bool calc_active_center_for_posemode(Object *ob, const bool select_only, float r_center[3])
+bool calc_active_center_for_posemode(Object * /*ob*/,
+                                     const bool /*select_only*/,
+                                     float /*r_center*/[3])
 {
-  bPoseChannel *pchan = BKE_pose_channel_active_if_bonecoll_visible(ob);
-  if (pchan && (!select_only || (pchan->flag & POSE_SELECTED))) {
-    const bArmature *arm = id_cast<bArmature *>(ob->data);
-    BKE_pose_channel_transform_location(arm, pchan, r_center);
-    return true;
-  }
   return false;
 }
 

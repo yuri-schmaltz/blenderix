@@ -15,8 +15,6 @@
 #include "draw_sculpt.hh"
 
 #include "overlay_base.hh"
-#include "overlay_grease_pencil.hh"
-#include "overlay_particle.hh"
 
 namespace blender::draw::overlay {
 
@@ -131,48 +129,6 @@ class Prepass : Overlay {
     }
   }
 
-  void particle_sync(Manager &manager, const ObjectRef &ob_ref, Resources &res, const State &state)
-  {
-    if (state.skip_particles) {
-      return;
-    }
-
-    Object *ob = ob_ref.object;
-
-    ResourceHandleRange handle = {};
-
-    for (ParticleSystem &psys : ob->particlesystem) {
-      if (!DRW_object_is_visible_psys_in_active_context(ob, &psys)) {
-        continue;
-      }
-
-      const ParticleSettings *part = psys.part;
-      const int draw_as = (part->draw_as == PART_DRAW_REND) ? part->ren_as : part->draw_as;
-      switch (draw_as) {
-        case PART_DRAW_PATH:
-          if ((state.is_wireframe_mode == false) && (part->draw_as == PART_DRAW_REND)) {
-            /* Case where the render engine should have rendered it, but we need to draw it for
-             * selection purpose. */
-            if (!handle.is_valid()) {
-              handle = manager.resource_handle_for_psys(ob_ref, ob_ref.particles_matrix());
-            }
-
-            select::ID select_id = use_material_slot_selection_ ?
-                                       res.select_id(ob_ref, part->omat << 16) :
-                                       res.select_id(ob_ref);
-
-            Batch *geom = DRW_cache_particles_get_hair(ob, &psys, nullptr);
-            hair_ps_->draw(geom, handle, select_id.get());
-            break;
-          }
-          break;
-        default:
-          /* Other draw modes should be handled by the particle overlay. */
-          break;
-      }
-    }
-  }
-
   void sculpt_sync(Manager &manager, const ObjectRef &ob_ref, Resources &res)
   {
     ResourceHandleRange handle = manager.unique_handle_for_sculpt(ob_ref);
@@ -204,8 +160,6 @@ class Prepass : Overlay {
     if (!enabled_ || !is_solid) {
       return;
     }
-
-    particle_sync(manager, ob_ref, res, state);
 
     const bool use_sculpt_pbvh = BKE_sculptsession_use_pbvh_draw(ob_ref.object, state.rv3d) &&
                                  !state.is_image_render;
@@ -244,46 +198,6 @@ class Prepass : Overlay {
         }
         pass = mesh_ps_;
         break;
-      case OB_VOLUME:
-        if (!res.is_selection()) {
-          /* Disable during display, only enable for selection. */
-          /* TODO(fclem): Would be nice to have even when not selecting to occlude overlays. */
-          return;
-        }
-        geom_single = DRW_cache_volume_selection_surface_get(ob_ref.object);
-        pass = mesh_ps_;
-        /* TODO(fclem): Get rid of these check and enforce correct API on the batch cache. */
-        if (geom_single == nullptr) {
-          return;
-        }
-        break;
-      case OB_POINTCLOUD:
-        pass = pointcloud_is_gsplat(ob_ref.object) ? gsplat_ps_ : pointcloud_ps_;
-        geom_single = pointcloud_sub_pass_setup(*pass, ob_ref, res_handle);
-        break;
-      case OB_CURVES: {
-        const char *error = nullptr;
-        /* The error string will always have been printed by the engine already.
-         * No need to display it twice. */
-        geom_single = curves_sub_pass_setup(*curves_ps_, state.scene, ob_ref.object, error);
-        pass = curves_ps_;
-        break;
-      }
-      case OB_GREASE_PENCIL:
-        if (!res.is_selection() && state.is_render_depth_available) {
-          /* Disable during display, only enable for selection.
-           * The grease pencil engine already renders it properly. */
-          return;
-        }
-        if (grease_pencil_ps_ != nullptr) {
-          GreasePencil::draw_grease_pencil(res,
-                                           *grease_pencil_ps_,
-                                           state.scene,
-                                           ob_ref.object,
-                                           manager.unique_handle(ob_ref),
-                                           res.select_id(ob_ref));
-        }
-        return;
       default:
         break;
     }

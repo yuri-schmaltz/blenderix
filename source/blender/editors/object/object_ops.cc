@@ -84,25 +84,14 @@ void operatortypes_object()
   WM_operatortype_append(COLLECTION_OT_objects_remove_active);
 
   WM_operatortype_append(OBJECT_OT_delete);
-  WM_operatortype_append(OBJECT_OT_text_add);
-  WM_operatortype_append(OBJECT_OT_armature_add);
   WM_operatortype_append(OBJECT_OT_empty_add);
   WM_operatortype_append(OBJECT_OT_empty_image_add);
-  WM_operatortype_append(OBJECT_OT_grease_pencil_add);
-  WM_operatortype_append(OBJECT_OT_curves_random_add);
-  WM_operatortype_append(OBJECT_OT_curves_empty_hair_add);
-  WM_operatortype_append(OBJECT_OT_pointcloud_random_add);
-  WM_operatortype_append(OBJECT_OT_volume_add);
-  WM_operatortype_append(OBJECT_OT_volume_import);
   WM_operatortype_append(OBJECT_OT_add);
-  WM_operatortype_append(OBJECT_OT_lattice_add_to_selected);
   WM_operatortype_append(OBJECT_OT_add_named);
   WM_operatortype_append(OBJECT_OT_transform_to_mouse);
-  WM_operatortype_append(OBJECT_OT_effector_add);
   WM_operatortype_append(OBJECT_OT_collection_instance_add);
   WM_operatortype_append(OBJECT_OT_collection_external_asset_drop);
   WM_operatortype_append(OBJECT_OT_data_instance_add);
-  WM_operatortype_append(OBJECT_OT_metaball_add);
   WM_operatortype_append(OBJECT_OT_duplicates_make_real);
   WM_operatortype_append(OBJECT_OT_duplicate);
   WM_operatortype_append(OBJECT_OT_join);
@@ -135,15 +124,6 @@ void operatortypes_object()
   WM_operatortype_append(OBJECT_OT_skin_root_mark);
   WM_operatortype_append(OBJECT_OT_skin_loose_mark_clear);
   WM_operatortype_append(OBJECT_OT_skin_radii_equalize);
-  WM_operatortype_append(OBJECT_OT_skin_armature_create);
-  WM_operatortype_append(OBJECT_OT_geometry_nodes_input_attribute_toggle);
-  WM_operatortype_append(OBJECT_OT_geometry_node_tree_copy_assign);
-  WM_operatortype_append(OBJECT_OT_grease_pencil_dash_modifier_segment_add);
-  WM_operatortype_append(OBJECT_OT_grease_pencil_dash_modifier_segment_remove);
-  WM_operatortype_append(OBJECT_OT_grease_pencil_dash_modifier_segment_move);
-  WM_operatortype_append(OBJECT_OT_grease_pencil_time_modifier_segment_add);
-  WM_operatortype_append(OBJECT_OT_grease_pencil_time_modifier_segment_remove);
-  WM_operatortype_append(OBJECT_OT_grease_pencil_time_modifier_segment_move);
 
   WM_operatortype_append(OBJECT_OT_correctivesmooth_bind);
   WM_operatortype_append(OBJECT_OT_meshdeform_bind);
@@ -151,14 +131,8 @@ void operatortypes_object()
 
   WM_operatortype_append(OBJECT_OT_constraint_add);
   WM_operatortype_append(OBJECT_OT_constraint_add_with_targets);
-  WM_operatortype_append(POSE_OT_constraint_add);
-  WM_operatortype_append(POSE_OT_constraint_add_with_targets);
   WM_operatortype_append(OBJECT_OT_constraints_copy);
-  WM_operatortype_append(POSE_OT_constraints_copy);
   WM_operatortype_append(OBJECT_OT_constraints_clear);
-  WM_operatortype_append(POSE_OT_constraints_clear);
-  WM_operatortype_append(POSE_OT_ik_add);
-  WM_operatortype_append(POSE_OT_ik_clear);
   WM_operatortype_append(CONSTRAINT_OT_delete);
   WM_operatortype_append(CONSTRAINT_OT_apply);
   WM_operatortype_append(CONSTRAINT_OT_copy);
@@ -234,15 +208,6 @@ void operatortypes_object()
   WM_operatortype_append(OBJECT_OT_hook_reset);
   WM_operatortype_append(OBJECT_OT_hook_recenter);
 
-  WM_operatortype_append(OBJECT_OT_bake_image);
-  WM_operatortype_append(OBJECT_OT_bake);
-  WM_operatortype_append(bake_simulation::OBJECT_OT_simulation_nodes_cache_calculate_to_frame);
-  WM_operatortype_append(bake_simulation::OBJECT_OT_simulation_nodes_cache_bake);
-  WM_operatortype_append(bake_simulation::OBJECT_OT_simulation_nodes_cache_delete);
-  WM_operatortype_append(bake_simulation::OBJECT_OT_geometry_node_bake_single);
-  WM_operatortype_append(bake_simulation::OBJECT_OT_geometry_node_bake_delete_single);
-  WM_operatortype_append(bake_simulation::OBJECT_OT_geometry_node_bake_pack_single);
-  WM_operatortype_append(bake_simulation::OBJECT_OT_geometry_node_bake_unpack_single);
   WM_operatortype_append(OBJECT_OT_drop_named_material);
   WM_operatortype_append(OBJECT_OT_drop_geometry_nodes);
   WM_operatortype_append(OBJECT_OT_unlink_data);
@@ -274,9 +239,6 @@ void operatortypes_object()
   WM_operatortype_append(OBJECT_OT_light_linking_blockers_link);
 
   WM_operatortype_append(OBJECT_OT_light_linking_unlink_from_collection);
-
-  /* Custom cameras. */
-  WM_operatortype_append(OBJECT_OT_camera_custom_update);
 
   collection_importer_register();
   collection_exporter_register();

@@ -69,8 +69,7 @@ class Bounds : Overlay {
     const bool from_dupli = is_from_dupli_or_set(ob);
     const bool empty_with_geometry = (ob->type == OB_EMPTY) && ob->runtime->geometry_set_eval &&
                                      !ob->runtime->geometry_set_eval->is_empty();
-    const bool has_bounds = (!ELEM(ob->type, OB_LAMP, OB_CAMERA, OB_SPEAKER) &&
-                             (ob->type != OB_MBALL || BKE_mball_is_basis(ob))) ||
+    const bool has_bounds = (!ELEM(ob->type, OB_LAMP, OB_CAMERA, OB_SPEAKER, OB_MBALL)) ||
                             empty_with_geometry;
     const bool show_extras = !from_dupli && state.show_extras();
 
@@ -185,26 +184,9 @@ class Bounds : Overlay {
           add_bounds_ex(me.texspace_location, me.texspace_size, OB_BOUND_BOX);
           break;
         }
-        case ID_CU_LEGACY: {
-          Curve &cu = DRW_object_get_data_for_drawing<Curve>(*ob);
-          BKE_curve_texspace_ensure(&cu);
-          add_bounds_ex(cu.texspace_location, cu.texspace_size, OB_BOUND_BOX);
-          break;
-        }
-        case ID_MB: {
-          MetaBall &mb = DRW_object_get_data_for_drawing<MetaBall>(*ob);
-          add_bounds_ex(mb.texspace_location, mb.texspace_size, OB_BOUND_BOX);
-          break;
-        }
-        case ID_CV:
-        case ID_PT:
-        case ID_VO: {
-          /* No user defined texture space support. */
+        default:
           add_bounds(false, OB_BOUND_BOX);
           break;
-        }
-        default:
-          BLI_assert_unreachable();
       }
     }
   }

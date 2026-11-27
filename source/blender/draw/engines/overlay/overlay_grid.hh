@@ -17,7 +17,6 @@
 #include "BLI_math_color_c.hh"
 #include "BLI_math_vector.hh"
 
-#include "ED_image.hh"
 #include "ED_view3d.hh"
 #include "GPU_texture.hh"
 
@@ -150,79 +149,9 @@ class Grid : Overlay {
     return false;
   }
 
-  bool init_space_image(const State &state)
+  bool init_space_image(const State & /*state*/)
   {
-    const View2D *v2d = &state.region->v2d;
-    SpaceImage *sima = (SpaceImage *)state.space_data;
-
-    /* Grid is currently visible in UV and Image editors, if enabled. */
-    const bool show_grid = bool(sima->overlay.flag & SI_OVERLAY_SHOW_GRID_BACKGROUND);
-    if (!show_grid) {
-      return false;
-    }
-
-    /* Configure grid flags s.t. GRID_OVER_IMAGE is taken into account. */
-    grid_flag_ = SHOW_GRID | GRID_SIMA;
-    if (sima->flag & SI_GRID_OVER_IMAGE) {
-      grid_flag_ |= GRID_OVER_IMAGE;
-    }
-
-    /* Query grid step/level scaling; these can differ per axis. */
-    std::array<float, SI_GRID_STEPS_LEN> steps_x, steps_y;
-    ED_space_image_grid_steps(sima, steps_x.data(), steps_y.data(), SI_GRID_STEPS_LEN);
-    for (int i : IndexRange(SI_GRID_STEPS_LEN)) {
-      /* NOTE(not_mark): grid steps data appears to be flipped on X/Y. */
-      grid_ubo_.steps[i].x = steps_x[i];
-      grid_ubo_.steps[i].y = grid_ubo_.steps[i].z = steps_y[i];
-    }
-
-    /* Clip rectangle can be specified in UV editor view. */
-    grid_ubo_.clip_rect.x = float(sima->tile_grid_shape[0]);
-    grid_ubo_.clip_rect.y = float(sima->tile_grid_shape[1]);
-    /* Outline draws lines around tile grid */
-    tile_pos_buf_.clear();
-    for (const int x : IndexRange(sima->tile_grid_shape[0])) {
-      for (const int y : IndexRange(sima->tile_grid_shape[1])) {
-        tile_pos_buf_.append(float4(x, y, 0.0f, 0.0f));
-      }
-    }
-    tile_pos_buf_.push_update();
-
-    /* Align the grid to the camera center. */
-    grid_ubo_.offset.x = 0.5f * (v2d->cur.xmax + v2d->cur.xmin);
-    grid_ubo_.offset.y = 0.5f * (v2d->cur.ymax + v2d->cur.ymin);
-    /* Restrict center to the clip rect. */
-    grid_ubo_.offset = math::clamp(grid_ubo_.offset, float2(0.0f), grid_ubo_.clip_rect);
-
-    /* Query grid image zoom level. Then find the lowest relevant grid level + fractional. */
-    float dist = ED_space_image_zoom_level(v2d, SI_GRID_STEPS_LEN) * 4.0f;
-    for (int i : IndexRange(SI_GRID_STEPS_LEN + 1)) {
-      float prev = (i > 0) ? std::min(grid_ubo_.steps[i - 1].x, grid_ubo_.steps[i - 1].y) : 0.0f;
-      float curr = (i < OVERLAY_GRID_STEPS_LEN) ?
-                       std::min(grid_ubo_.steps[i].x, grid_ubo_.steps[i].y) :
-                       std::numeric_limits<float>::infinity();
-      if (curr >= dist || i == OVERLAY_GRID_STEPS_LEN) {
-        grid_ubo_.level = static_cast<float>(i) + safe_divide(dist - prev, curr - prev);
-        break;
-      }
-    }
-
-    /* Determine the practical size of the viewport in line steps. */
-    const uint lowest_level = std::min(uint(grid_ubo_.level), uint(OVERLAY_GRID_STEPS_LEN - 1));
-    const float2 lowest_step = grid_ubo_.steps[lowest_level].xy();
-    float2 viewport_size = float2((v2d->cur.xmax - v2d->cur.xmin),
-                                  (v2d->cur.ymax - v2d->cur.ymin));
-    viewport_size = math::min(viewport_size, grid_ubo_.clip_rect);
-
-    /* We limit to 8192 lines per axis. This hits the current maximum framebuffer size on
-     * the VK roadmap. In addition, lines are faded when they are 2-4 pixels apart. */
-    const float viewport_extent = math::reduce_max(viewport_size);
-    uint max_lines_x = 2u * uint(ceilf(viewport_extent / lowest_step.x)) + 1u;
-    uint max_lines_y = 2u * uint(ceilf(viewport_extent / lowest_step.y)) + 1u;
-    grid_ubo_.num_lines = std::min(std::max(max_lines_x, max_lines_y), 8192u);
-    num_iters_ = 1u;
-
-    return true;
+    return false;
   }
 
   bool init_v3d(const State &state)

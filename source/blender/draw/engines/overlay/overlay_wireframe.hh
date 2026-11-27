@@ -136,35 +136,6 @@ class Wireframe : Overlay {
 
     ColoringPass &coloring = in_edit_paint_mode ? non_colored : colored;
     switch (ob_ref.object->type) {
-      case OB_CURVES_LEGACY: {
-        Batch *geom = DRW_cache_curve_edge_wire_get(ob_ref.object);
-        coloring.curves_ps_->draw(
-            geom, manager.unique_handle(ob_ref), res.select_id(ob_ref).get());
-        break;
-      }
-      case OB_FONT: {
-        Batch *geom = DRW_cache_text_edge_wire_get(ob_ref.object);
-        coloring.curves_ps_->draw(
-            geom, manager.unique_handle(ob_ref), res.select_id(ob_ref).get());
-        break;
-      }
-      case OB_SURF: {
-        Batch *geom = DRW_cache_surf_edge_wire_get(ob_ref.object);
-        coloring.curves_ps_->draw(
-            geom, manager.unique_handle(ob_ref), res.select_id(ob_ref).get());
-        break;
-      }
-      case OB_CURVES:
-        /* TODO(fclem): Not yet implemented. */
-        break;
-      case OB_GREASE_PENCIL: {
-        if (show_surface_wire) {
-          Batch *geom = DRW_cache_grease_pencil_face_wireframe_get(state.scene, ob_ref.object);
-          coloring.curves_ps_->draw(
-              geom, manager.unique_handle(ob_ref), res.select_id(ob_ref).get());
-        }
-        break;
-      }
       case OB_MESH: {
         /* Force display in edit mode when overlay is off in wireframe mode (see #78484). */
         const bool wireframe_no_overlay = state.hide_overlays && state.is_wireframe_mode;
@@ -212,45 +183,7 @@ class Wireframe : Overlay {
         }
         break;
       }
-      case OB_POINTCLOUD: {
-        if (show_surface_wire) {
-          ResourceHandleRange res_handle = manager.unique_handle(ob_ref);
-          Batch *batch_pointcloud = DRW_pointcloud_batch_cache_get_dots(ob_ref.object);
-          Batch *batch_gsplat = DRW_gsplat_batch_cache_get_dots(ob_ref.object);
-          if (batch_pointcloud) {
-            coloring.pointcloud_ps_->draw(
-                batch_pointcloud, manager.unique_handle(ob_ref), res.select_id(ob_ref).get());
-          }
-          if (batch_gsplat) {
-            draw::gsplat_sub_pass_setup(*coloring.gsplat_ps_, ob_ref, res_handle, nullptr);
-            coloring.gsplat_ps_->draw(
-                batch_gsplat, manager.unique_handle(ob_ref), res.select_id(ob_ref).get());
-          }
-        }
-        break;
-      }
-      case OB_VOLUME: {
-        if (show_surface_wire) {
-          Batch *geom = DRW_cache_volume_face_wireframe_get(ob_ref.object);
-          if (geom == nullptr) {
-            break;
-          }
-          if (DRW_object_get_data_for_drawing<Volume>(*ob_ref.object).display.wireframe_type ==
-              VOLUME_WIREFRAME_POINTS)
-          {
-            coloring.points_ps_->draw(
-                geom, manager.unique_handle(ob_ref), res.select_id(ob_ref).get());
-          }
-          else {
-            coloring.mesh_all_edges_ps_->draw(
-                geom, manager.unique_handle(ob_ref), res.select_id(ob_ref).get());
-          }
-        }
-        break;
-      }
       default:
-        /* Would be good to have. */
-        // BLI_assert_unreachable();
         break;
     }
   }

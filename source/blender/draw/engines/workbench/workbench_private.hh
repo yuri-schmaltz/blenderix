@@ -475,53 +475,6 @@ class ShadowPass {
   bool is_debug();
 };
 
-class VolumePass {
-  bool active_ = true;
-
-  PassSortable ps_ = {"Volume"};
-  Framebuffer fb_ = {"Volume"};
-
-  Texture dummy_shadow_tx_ = {"Volume.Dummy Shadow Tx"};
-  Texture dummy_volume_tx_ = {"Volume.Dummy Volume Tx"};
-  Texture dummy_flag_tx_ = {"Volume.Dummy Flag Tx"};
-  Texture dummy_coba_tx_ = {"Volume.Dummy Coba Tx"};
-
-  gpu::Texture *stencil_tx_ = nullptr;
-
- public:
-  void sync(SceneResources &resources);
-
-  void object_sync_volume(Manager &manager,
-                          SceneResources &resources,
-                          const SceneState &scene_state,
-                          ObjectRef &ob_ref,
-                          float3 color);
-
-  void object_sync_modifier(Manager &manager,
-                            SceneResources &resources,
-                            const SceneState &scene_state,
-                            ObjectRef &ob_ref,
-                            ModifierData *md);
-
-  void draw(Manager &manager, View &view, SceneResources &resources);
-
- private:
-  void draw_slice_ps(Manager &manager,
-                     SceneResources &resources,
-                     PassMain::Sub &ps,
-                     ObjectRef &ob_ref,
-                     int slice_axis_enum,
-                     float slice_depth);
-
-  void draw_volume_ps(Manager &manager,
-                      SceneResources &resources,
-                      PassMain::Sub &ps,
-                      ObjectRef &ob_ref,
-                      int taa_sample,
-                      float3 slice_count,
-                      float3 world_size);
-};
-
 class OutlinePass {
  private:
   bool enabled_ = false;

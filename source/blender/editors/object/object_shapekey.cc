@@ -22,16 +22,12 @@
 
 #include "BLT_translation.hh"
 
-#include "DNA_curve_types.h"
 #include "DNA_key_types.h"
-#include "DNA_lattice_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
 
 #include "BKE_context.hh"
-#include "BKE_curve.hh"
 #include "BKE_key.hh"
-#include "BKE_lattice.hh"
 #include "BKE_library.hh"
 #include "BKE_object.hh"
 #include "BKE_report.hh"
@@ -39,8 +35,6 @@
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_build.hh"
 
-#include "ED_curve.hh"
-#include "ED_lattice.hh"
 #include "ED_mesh.hh"
 #include "ED_object.hh"
 
@@ -60,23 +54,11 @@ namespace blender::ed::object {
 
 bool shape_key_report_if_locked(const Object *obedit, ReportList *reports)
 {
-  KeyBlock *key_block;
-
-  switch (obedit->type) {
-    case OB_MESH:
-      key_block = ED_mesh_get_edit_shape_key(id_cast<Mesh *>(obedit->data));
-      break;
-    case OB_SURF:
-    case OB_CURVES_LEGACY:
-      key_block = ED_curve_get_edit_shape_key(id_cast<Curve *>(obedit->data));
-      break;
-    case OB_LATTICE:
-      key_block = ED_lattice_get_edit_shape_key(id_cast<Lattice *>(obedit->data));
-      break;
-    default:
-      return false;
+  if (obedit->type != OB_MESH) {
+    return false;
   }
 
+  KeyBlock *key_block = ED_mesh_get_edit_shape_key(id_cast<Mesh *>(obedit->data));
   if (key_block && (key_block->flag & KEYBLOCK_LOCKED_SHAPE) != 0) {
     if (reports) {
       BKE_reportf(reports, RPT_ERROR, "The active shape key of %s is locked", obedit->id.name + 2);
@@ -212,50 +194,6 @@ void shape_key_mirror(
     }
 
     ED_mesh_mirror_spatial_table_end(ob);
-  }
-  else if (ob->type == OB_LATTICE) {
-    const Lattice *lt = id_cast<const Lattice *>(ob->data);
-    int i1, i2;
-    float *fp1, *fp2;
-    int u, v, w;
-    /* half but found up odd value */
-    const int pntsu_half = (lt->pntsu / 2) + (lt->pntsu % 2);
-
-    /* Currently edit-mode isn't supported by mesh so ignore here for now too. */
-#if 0
-      if (lt->editlatt) {
-        lt = lt->editlatt->latt;
-      }
-#endif
-
-    for (w = 0; w < lt->pntsw; w++) {
-      for (v = 0; v < lt->pntsv; v++) {
-        for (u = 0; u < pntsu_half; u++) {
-          int u_inv = (lt->pntsu - 1) - u;
-          float tvec[3];
-          if (u == u_inv) {
-            i1 = BKE_lattice_index_from_uvw(lt, u, v, w);
-            fp1 = (static_cast<float *>(kb->data)) + i1 * 3;
-            fp1[0] = -fp1[0];
-            totmirr++;
-          }
-          else {
-            i1 = BKE_lattice_index_from_uvw(lt, u, v, w);
-            i2 = BKE_lattice_index_from_uvw(lt, u_inv, v, w);
-
-            fp1 = (static_cast<float *>(kb->data)) + i1 * 3;
-            fp2 = (static_cast<float *>(kb->data)) + i2 * 3;
-
-            copy_v3_v3(tvec, fp1);
-            copy_v3_v3(fp1, fp2);
-            copy_v3_v3(fp2, tvec);
-            fp1[0] = -fp1[0];
-            fp2[0] = -fp2[0];
-            totmirr++;
-          }
-        }
-      }
-    }
   }
 
   MEM_delete(tag_elem);
@@ -964,23 +902,9 @@ static wmOperatorStatus shape_key_make_basis_exec(bContext *C, wmOperator * /*op
 
   /* Apply new basis key on original data. This is needed so that creating new shape-keys will
    * start from the new basis shape. */
-  switch (ob->type) {
-    case OB_MESH: {
-      Mesh *mesh = id_cast<Mesh *>(ob->data);
-      BKE_keyblock_convert_to_mesh(new_basis_key, mesh->vert_positions_for_write());
-      break;
-    }
-    case OB_CURVES_LEGACY:
-    case OB_SURF:
-      BKE_keyblock_convert_to_curve(new_basis_key,
-                                    id_cast<Curve *>(ob->data),
-                                    BKE_curve_nurbs_get(id_cast<Curve *>(ob->data)));
-      break;
-    case OB_LATTICE:
-      BKE_keyblock_convert_to_lattice(new_basis_key, id_cast<Lattice *>(ob->data));
-      break;
-    default:
-      break;
+  if (ob->type == OB_MESH) {
+    Mesh *mesh = id_cast<Mesh *>(ob->data);
+    BKE_keyblock_convert_to_mesh(new_basis_key, mesh->vert_positions_for_write());
   }
 
   DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);

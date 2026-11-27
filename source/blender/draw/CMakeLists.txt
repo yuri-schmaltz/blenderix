@@ -56,30 +56,17 @@ set(SRC
   intern/mesh_extractors/extract_mesh_vbo_vnor.cc
   intern/mesh_extractors/extract_mesh_vbo_weights.cc
   intern/draw_attributes.cc
-  intern/draw_cache_impl_curve.cc
-  intern/draw_cache_impl_curves.cc
-  intern/draw_cache_impl_grease_pencil.cc
-  intern/draw_cache_impl_gsplat.cc
-  intern/draw_cache_impl_lattice.cc
   intern/draw_cache_impl_mesh.cc
-  intern/draw_cache_impl_particles.cc
-  intern/draw_cache_impl_pointcloud.cc
   intern/draw_cache_impl_subdivision.cc
-  intern/draw_cache_impl_volume.cc
   intern/draw_color_management.cc
   intern/draw_command.cc
   intern/draw_context.cc
-  intern/draw_curves.cc
   intern/draw_debug.cc
-  intern/draw_fluid.cc
   intern/draw_gpu_context.cc
-  intern/draw_gsplat.cc
-  intern/draw_hair.cc
   intern/draw_manager.cc
   intern/draw_manager_text.cc
   intern/draw_meshlet.cc
   intern/draw_pbvh.cc
-  intern/draw_pointcloud.cc
   intern/draw_resource.cc
   intern/draw_sculpt.cc
   intern/draw_select_buffer.cc
@@ -87,7 +74,6 @@ set(SRC
   intern/draw_view.cc
   intern/draw_view_c.cc
   intern/draw_view_data.cc
-  intern/draw_volume.cc
   engines/workbench/workbench_effect_antialiasing.cc
   engines/workbench/workbench_effect_cavity.cc
   engines/workbench/workbench_effect_dof.cc
@@ -99,10 +85,8 @@ set(SRC
   engines/workbench/workbench_shader_cache.cc
   engines/workbench/workbench_shadow.cc
   engines/workbench/workbench_state.cc
-  engines/workbench/workbench_volume.cc
   engines/select/select_engine.cc
   engines/select/select_instance.cc
-  engines/overlay/overlay_armature.cc
   engines/overlay/overlay_engine.cc
   engines/overlay/overlay_instance.cc
   engines/overlay/overlay_mode_transfer.cc
@@ -125,17 +109,13 @@ set(SRC
   intern/draw_common.hh
   intern/draw_common_c.hh
   intern/draw_context_private.hh
-  intern/draw_curves_private.hh
   intern/draw_debug.hh
   intern/draw_debug_shared.hh
-  intern/draw_gsplat_private.hh
-  intern/draw_hair_private.hh
   intern/draw_handle.hh
   intern/draw_manager.hh
   intern/draw_manager_text.hh
   intern/draw_pass.hh
   intern/draw_pbvh_allocator.hh
-  intern/draw_pointcloud_private.hh
   intern/draw_resource.hh
   intern/draw_sculpt.hh
   intern/draw_shader.hh
@@ -149,7 +129,6 @@ set(SRC
   intern/draw_view_data.hh
   intern/mesh_extractors/extract_mesh.hh
   engines/overlay/overlay_antialiasing.hh
-  engines/overlay/overlay_armature.hh
   engines/overlay/overlay_attribute_text.hh
   engines/overlay/overlay_attribute_viewer.hh
   engines/overlay/overlay_axes.hh
@@ -158,37 +137,25 @@ set(SRC
   engines/overlay/overlay_bounds.hh
   engines/overlay/overlay_camera.hh
   engines/overlay/overlay_cursor.hh
-  engines/overlay/overlay_curve.hh
   engines/overlay/overlay_empty.hh
   engines/overlay/overlay_engine.h
   engines/overlay/overlay_facing.hh
   engines/overlay/overlay_fade.hh
-  engines/overlay/overlay_fluid.hh
-  engines/overlay/overlay_force_field.hh
-  engines/overlay/overlay_grease_pencil.hh
   engines/overlay/overlay_grid.hh
-  engines/overlay/overlay_gsplat.hh
   engines/overlay/overlay_image.hh
   engines/overlay/overlay_instance.hh
-  engines/overlay/overlay_lattice.hh
   engines/overlay/overlay_light.hh
   engines/overlay/overlay_lightprobe.hh
   engines/overlay/overlay_mesh.hh
-  engines/overlay/overlay_metaball.hh
   engines/overlay/overlay_mode_transfer.hh
-  engines/overlay/overlay_motion_path.hh
   engines/overlay/overlay_name.hh
   engines/overlay/overlay_origin.hh
   engines/overlay/overlay_outline.hh
   engines/overlay/overlay_paint.hh
-  engines/overlay/overlay_particle.hh
-  engines/overlay/overlay_pointcloud.hh
   engines/overlay/overlay_prepass.hh
   engines/overlay/overlay_private.hh
   engines/overlay/overlay_relation.hh
   engines/overlay/overlay_sculpt.hh
-  engines/overlay/overlay_speaker.hh
-  engines/overlay/overlay_text.hh
   engines/overlay/overlay_wireframe.hh
   engines/overlay/overlay_xray_fade.hh
   engines/select/select_defines.hh

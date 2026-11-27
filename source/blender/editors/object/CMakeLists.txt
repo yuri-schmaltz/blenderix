@@ -21,10 +21,6 @@ set(SRC
   add_modifier_assets.cc
   interface_template_shape_key_tree.cc
   object_add.cc
-  object_bake.cc
-  object_bake_api.cc
-  object_bake_simulation.cc
-  object_camera.cc
   object_collection.cc
   object_constraint.cc
   object_data_transfer.cc
@@ -45,7 +41,6 @@ set(SRC
   object_utils.cc
   object_vgroup.cc
   object_visual_geometry_to_objects.cc
-  object_volume.cc
   object_warp.cc
 
   object_intern.hh

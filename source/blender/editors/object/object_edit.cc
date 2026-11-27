@@ -36,31 +36,22 @@
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
-#include "BKE_anim_visualization.h"
-#include "BKE_armature.hh"
 #include "BKE_collection.hh"
 #include "BKE_constraint.h"
 #include "BKE_context.hh"
-#include "BKE_curve.hh"
-#include "BKE_editlattice.h"
 #include "BKE_editmesh.hh"
-#include "BKE_effect.h"
 #include "BKE_global.hh"
 #include "BKE_idprop.hh"
 #include "BKE_image.hh"
-#include "BKE_lattice.hh"
 #include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_library.hh"
 #include "BKE_main.hh"
 #include "BKE_material.hh"
-#include "BKE_mball.hh"
 #include "BKE_mesh.hh"
 #include "BKE_modifier.hh"
 #include "BKE_node_runtime.hh"
 #include "BKE_object.hh"
-#include "BKE_paint.hh"
-#include "BKE_particle.h"
 #include "BKE_pointcache.h"
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
@@ -70,17 +61,6 @@
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_build.hh"
 
-#include "ED_anim_api.hh"
-#include "ED_armature.hh"
-#include "ED_asset.hh"
-#include "ED_asset_menu_utils.hh"
-#include "ED_curve.hh"
-#include "ED_gpencil_legacy.hh"
-#include "ED_grease_pencil.hh"
-#include "ED_image.hh"
-#include "ED_keyframes_keylist.hh"
-#include "ED_lattice.hh"
-#include "ED_mball.hh"
 #include "ED_mesh.hh"
 #include "ED_object.hh"
 #include "ED_outliner.hh"
@@ -106,8 +86,6 @@
 #include "WM_message.hh"
 #include "WM_toolsystem.hh"
 #include "WM_types.hh"
-
-#include "MOD_nodes.hh"
 
 #include "object_intern.hh" /* own include */
 
@@ -564,45 +542,6 @@ void OBJECT_OT_hide_collection(wmOperatorType *ot)
 /** \name Toggle Edit-Mode Operator
  * \{ */
 
-/* When switching mode, certain data needs to be copied from the `bPoseChannel` to the `Bone`. This
- * is not done in `BKE_pose_rebuild` because that is called in other cases other than mode
- * switching. */
-static void flush_bone_selection_to_pose(Object &ob)
-{
-  BLI_assert(ob.pose);
-  for (bPoseChannel &pose_bone : ob.pose->chanbase) {
-    pose_bone.flag &= ~(POSE_SELECTED | POSE_SELECTED_ROOT | POSE_SELECTED_TIP);
-    const Bone *bone = pose_bone.bone_get(ob);
-    if (bone->flag & BONE_ROOTSEL) {
-      pose_bone.flag |= POSE_SELECTED_ROOT;
-    }
-    if (bone->flag & BONE_TIPSEL) {
-      pose_bone.flag |= POSE_SELECTED_TIP;
-    }
-    if (bone->flag & BONE_SELECTED) {
-      pose_bone.flag |= POSE_SELECTED;
-    }
-  }
-}
-
-static void flush_pose_selection_to_bone(Object &ob)
-{
-  BLI_assert(ob.pose);
-  for (bPoseChannel &pose_bone : ob.pose->chanbase) {
-    Bone *bone = pose_bone.bone_get(ob);
-    bone->flag &= ~(BONE_ROOTSEL | BONE_TIPSEL | BONE_SELECTED);
-    if (pose_bone.flag & POSE_SELECTED_ROOT) {
-      bone->flag |= BONE_ROOTSEL;
-    }
-    if (pose_bone.flag & POSE_SELECTED_TIP) {
-      bone->flag |= BONE_TIPSEL;
-    }
-    if (pose_bone.flag & POSE_SELECTED) {
-      bone->flag |= BONE_SELECTED;
-    }
-  }
-}
-
 static bool mesh_needs_keyindex(Main *bmain, const Mesh *mesh)
 {
   if (mesh->key) {
@@ -668,95 +607,6 @@ static bool editmode_load_free_ex(Main *bmain,
       ED_mesh_mirror_spatial_table_end(obedit);
       ED_mesh_mirror_topo_table_end(obedit);
     }
-  }
-  else if (obedit->type == OB_ARMATURE) {
-    const bArmature *arm = id_cast<const bArmature *>(obedit->data);
-    if (arm->edbo == nullptr) {
-      return false;
-    }
-
-    if (load_data) {
-      ED_armature_from_edit(bmain, id_cast<bArmature *>(obedit->data));
-    }
-
-    if (free_data) {
-      ED_armature_edit_free(id_cast<bArmature *>(obedit->data));
-
-      if (load_data == false) {
-        /* Don't keep unused pose channels created by duplicating bones
-         * which may have been deleted/undone, see: #87631. */
-        if (obedit->pose != nullptr) {
-          BKE_pose_channels_clear_with_null_bone(obedit, true);
-        }
-      }
-    }
-
-    /* After regenerating the bones, sync the selection onto the pose bones. */
-    flush_bone_selection_to_pose(*obedit);
-    /* TODO(sergey): Pose channels might have been changed, so need
-     * to inform dependency graph about this. But is it really the
-     * best place to do this?
-     */
-    DEG_relations_tag_update(bmain);
-  }
-  else if (ELEM(obedit->type, OB_CURVES_LEGACY, OB_SURF)) {
-    const Curve *cu = id_cast<const Curve *>(obedit->data);
-    if (cu->editnurb == nullptr) {
-      return false;
-    }
-
-    if (load_data) {
-      ED_curve_editnurb_load(bmain, obedit);
-    }
-
-    if (free_data) {
-      ED_curve_editnurb_free(obedit);
-    }
-  }
-  else if (obedit->type == OB_FONT) {
-    const Curve *cu = id_cast<const Curve *>(obedit->data);
-    if (cu->editfont == nullptr) {
-      return false;
-    }
-
-    if (load_data) {
-      ED_curve_editfont_load(obedit);
-    }
-
-    if (free_data) {
-      ED_curve_editfont_free(obedit);
-    }
-  }
-  else if (obedit->type == OB_LATTICE) {
-    const Lattice *lt = id_cast<const Lattice *>(obedit->data);
-    if (lt->editlatt == nullptr) {
-      return false;
-    }
-
-    if (load_data) {
-      BKE_editlattice_load(obedit);
-    }
-
-    if (free_data) {
-      BKE_editlattice_free(obedit);
-    }
-  }
-  else if (obedit->type == OB_MBALL) {
-    const MetaBall *mb = id_cast<const MetaBall *>(obedit->data);
-    if (mb->editelems == nullptr) {
-      return false;
-    }
-
-    if (load_data) {
-      ED_mball_editmball_load(obedit);
-    }
-
-    if (free_data) {
-      ED_mball_editmball_free(obedit);
-    }
-  }
-  else if (ELEM(obedit->type, OB_CURVES, OB_GREASE_PENCIL, OB_POINTCLOUD)) {
-    /* Object doesn't have specific edit mode data, so pass. */
   }
   else {
     return false;
@@ -893,76 +743,6 @@ bool editmode_enter_ex(Main *bmain, Scene *scene, Object *ob, int flag)
 
     WM_main_add_notifier(NC_SCENE | ND_MODE | NS_EDITMODE_MESH, nullptr);
   }
-  else if (ob->type == OB_ARMATURE) {
-    /* Syncing the selection to the `Bone` before converting to edit bones. This is not possible if
-     * the Armature was just created, because then there is no pose data yet. Which is fine, the
-     * just-created edit bones already have the expected selection state. */
-    if (ob->pose) {
-      flush_pose_selection_to_bone(*ob);
-    }
-
-    bArmature *arm = id_cast<bArmature *>(ob->data);
-    ok = true;
-    ED_armature_to_edit(arm);
-    /* To ensure all goes in rest-position and without striding. */
-
-    arm->needs_flush_to_id = 0;
-
-    /* WORKAROUND / FIXME: this is a temporary workaround to ensure that
-     * full bone collection data gets restored when exiting edit mode
-     * via an undo step. The correct fix is to have a full edit-mode
-     * copy of bone collections so that edit-mode changes don't modify
-     * object-mode armature data until exiting edit mode. But that
-     * change is a bit of a project, and will be done later. This line
-     * should be removed when that is done. */
-    bmain->is_memfile_undo_written = false;
-
-    /* XXX: should this be ID_RECALC_GEOMETRY? */
-    DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY | ID_RECALC_ANIMATION);
-
-    WM_main_add_notifier(NC_SCENE | ND_MODE | NS_EDITMODE_ARMATURE, scene);
-  }
-  else if (ob->type == OB_FONT) {
-    ok = true;
-    ED_curve_editfont_make(ob);
-
-    WM_main_add_notifier(NC_SCENE | ND_MODE | NS_EDITMODE_TEXT, scene);
-  }
-  else if (ob->type == OB_MBALL) {
-    MetaBall *mb = id_cast<MetaBall *>(ob->data);
-
-    ok = true;
-    ED_mball_editmball_make(ob);
-
-    mb->needs_flush_to_id = 0;
-
-    WM_main_add_notifier(NC_SCENE | ND_MODE | NS_EDITMODE_MBALL, scene);
-  }
-  else if (ob->type == OB_LATTICE) {
-    ok = true;
-    BKE_editlattice_make(ob);
-
-    WM_main_add_notifier(NC_SCENE | ND_MODE | NS_EDITMODE_LATTICE, scene);
-  }
-  else if (ELEM(ob->type, OB_SURF, OB_CURVES_LEGACY)) {
-    ok = true;
-    ED_curve_editnurb_make(ob);
-
-    WM_main_add_notifier(NC_SCENE | ND_MODE | NS_EDITMODE_CURVE, scene);
-  }
-  else if (ob->type == OB_CURVES) {
-    ok = true;
-    WM_main_add_notifier(NC_SCENE | ND_MODE | NS_EDITMODE_CURVES, scene);
-  }
-  else if (ob->type == OB_GREASE_PENCIL) {
-    ok = true;
-    ed::greasepencil::ensure_selection_domain(scene->toolsettings, ob);
-    WM_main_add_notifier(NC_SCENE | ND_MODE | NS_EDITMODE_GREASE_PENCIL, scene);
-  }
-  else if (ob->type == OB_POINTCLOUD) {
-    ok = true;
-    WM_main_add_notifier(NC_SCENE | ND_MODE | NS_EDITMODE_POINTCLOUD, scene);
-  }
 
   if (ok) {
     DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
@@ -1089,68 +869,22 @@ void OBJECT_OT_editmode_toggle(wmOperatorType *ot)
 /** \name Force Field Toggle Operator
  * \{ */
 
-void check_force_modifiers(Main *bmain, Scene *scene, Object *object)
+void check_force_modifiers(Main * /*bmain*/, Scene * /*scene*/, Object * /*object*/) {}
+
+static wmOperatorStatus forcefield_toggle_exec(bContext * /*C*/, wmOperator * /*op*/)
 {
-  PartDeflect *pd = object->pd;
-  ModifierData *md = BKE_modifiers_findby_type(object, eModifierType_Surface);
-
-  /* add/remove modifier as needed */
-  if (!md) {
-    if (pd && (pd->shape == PFIELD_SHAPE_SURFACE) &&
-        !ELEM(pd->forcefield, 0, PFIELD_GUIDE, PFIELD_TEXTURE))
-    {
-      if (ELEM(object->type, OB_MESH, OB_SURF, OB_FONT, OB_CURVES_LEGACY)) {
-        modifier_add(nullptr, bmain, scene, object, nullptr, eModifierType_Surface);
-      }
-    }
-  }
-  else {
-    if (!pd || (pd->shape != PFIELD_SHAPE_SURFACE) ||
-        ELEM(pd->forcefield, 0, PFIELD_GUIDE, PFIELD_TEXTURE))
-    {
-      modifier_remove(nullptr, bmain, scene, object, md);
-    }
-  }
-}
-
-static wmOperatorStatus forcefield_toggle_exec(bContext *C, wmOperator * /*op*/)
-{
-  Object *ob = ed::object::context_active_object(C);
-
-  if (ob->pd == nullptr) {
-    ob->pd = BKE_partdeflect_new(PFIELD_FORCE);
-    ob->empty_drawtype = OB_PLAINAXES;
-  }
-  else if (ob->pd->forcefield == 0) {
-    ob->pd->forcefield = PFIELD_FORCE;
-    ob->empty_drawtype = OB_PLAINAXES;
-  }
-  else {
-    ob->pd->forcefield = ePFieldType{};
-  }
-
-  check_force_modifiers(CTX_data_main(C), CTX_data_scene(C), ob);
-  WM_event_add_notifier(C, NC_OBJECT | ND_DRAW, ob);
-  WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
-
-  DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM);
-
-  return OPERATOR_FINISHED;
+  return OPERATOR_CANCELLED;
 }
 
 void OBJECT_OT_forcefield_toggle(wmOperatorType *ot)
 {
-
-  /* identifiers */
   ot->name = "Toggle Force Field";
   ot->description = "Toggle object's force field";
   ot->idname = "OBJECT_OT_forcefield_toggle";
 
-  /* API callbacks. */
   ot->exec = forcefield_toggle_exec;
   ot->poll = ED_operator_object_active_editable;
 
-  /* flags */
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
@@ -1160,125 +894,24 @@ void OBJECT_OT_forcefield_toggle(wmOperatorType *ot)
 /** \name Calculate Motion Paths Operator
  * \{ */
 
-static bool has_object_motion_paths(Object *ob)
+void motion_paths_recalc(bContext * /*C*/, Scene * /*scene*/, const Span<Object *> /*objects*/) {}
+
+static wmOperatorStatus object_calculate_paths_exec(bContext * /*C*/, wmOperator * /*op*/)
 {
-  return (ob->avs.path_bakeflag & MOTIONPATH_BAKE_HAS_PATHS) != 0;
-}
-
-static bool has_pose_motion_paths(Object *ob)
-{
-  return ob->pose && (ob->pose->avs.path_bakeflag & MOTIONPATH_BAKE_HAS_PATHS) != 0;
-}
-
-void motion_paths_recalc(bContext *C, Scene *scene, const Span<Object *> objects)
-{
-  BLI_assert(C != nullptr);
-  Main *bmain = CTX_data_main(C);
-  ViewLayer *view_layer = CTX_data_view_layer(C);
-
-  Vector<MPathTarget> targets;
-  for (Object *ob : objects) {
-    /* set flag to force recalc, then grab path(s) from object */
-    if (has_object_motion_paths(ob)) {
-      ob->avs.recalc |= ANIMVIZ_RECALC_PATHS;
-    }
-
-    if (has_pose_motion_paths(ob)) {
-      ob->pose->avs.recalc |= ANIMVIZ_RECALC_PATHS;
-    }
-
-    animviz_build_motionpath_targets(ob, targets);
-  }
-
-  Depsgraph *depsgraph = animviz_depsgraph_build(bmain, scene, view_layer, targets);
-
-  animviz_calc_motionpaths(depsgraph, scene, targets, BKE_scene_frame_get(scene));
-
-  /* Tag objects for copy-on-eval - so paths will draw/redraw
-   * For currently frame only we update evaluated object directly. */
-  for (Object *ob : objects) {
-    if (has_object_motion_paths(ob) || has_pose_motion_paths(ob)) {
-      DEG_id_tag_update(&ob->id, ID_RECALC_SYNC_TO_EVAL);
-    }
-  }
-
-  /* Free temporary depsgraph. */
-  DEG_graph_free(depsgraph);
-}
-
-/* show popup to determine settings */
-static wmOperatorStatus object_calculate_paths_invoke(bContext *C,
-                                                      wmOperator *op,
-                                                      const wmEvent * /*event*/)
-{
-  Object *ob = ed::object::context_active_object(C);
-
-  /* set default settings from existing/stored settings */
-  {
-    bAnimVizSettings *avs = &ob->avs;
-    RNA_enum_set(op->ptr, "display_type", avs->path_type);
-    RNA_enum_set(op->ptr, "range", avs->path_range);
-  }
-
-  /* show popup dialog to allow editing of range... */
-  /* FIXME: hard-coded dimensions here are just arbitrary. */
-  return WM_operator_props_dialog_popup(
-      C, op, 270, IFACE_("Calculate Object Motion Paths"), IFACE_("Calculate"));
-}
-
-/* Calculate/recalculate whole paths (avs.path_sf to avs.path_ef) */
-static wmOperatorStatus object_calculate_paths_exec(bContext *C, wmOperator *op)
-{
-  Scene *scene = CTX_data_scene(C);
-  eMotionPaths_Types path_type = eMotionPaths_Types(RNA_enum_get(op->ptr, "display_type"));
-  eMotionPath_Ranges path_range = eMotionPath_Ranges(RNA_enum_get(op->ptr, "range"));
-
-  Vector<Object *> selected_objects;
-  /* set up path data for objects being calculated */
-  CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects) {
-    bAnimVizSettings *avs = &ob->avs;
-    /* grab baking settings from operator settings */
-    avs->path_type = path_type;
-    avs->path_range = path_range;
-    animviz_motionpath_compute_range(ob, scene);
-
-    /* verify that the selected object has the appropriate settings */
-    bke::motionpath::ensure(op->reports, scene, ob, nullptr);
-    if (ob->mpath) {
-      ed::motionpath::tag_for_recalc(*ob->mpath);
-      selected_objects.append(ob);
-    }
-  }
-  CTX_DATA_END;
-
-  /* calculate the paths for objects that have them (and are tagged to get refreshed) */
-  motion_paths_recalc(C, scene, selected_objects);
-
-  /* notifiers for updates */
-  WM_event_add_notifier(C, NC_OBJECT | ND_DRAW_ANIMVIZ, nullptr);
-  /* NOTE: the notifier below isn't actually correct, but kept around just to be on the safe side.
-   * If further testing shows it's not necessary (for both bones and objects) removal is fine. */
-  WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM | ND_POSE, nullptr);
-
-  return OPERATOR_FINISHED;
+  return OPERATOR_CANCELLED;
 }
 
 void OBJECT_OT_paths_calculate(wmOperatorType *ot)
 {
-  /* identifiers */
   ot->name = "Calculate Object Motion Paths";
   ot->idname = "OBJECT_OT_paths_calculate";
   ot->description = "Generate motion paths for the selected objects";
 
-  /* API callbacks. */
-  ot->invoke = object_calculate_paths_invoke;
   ot->exec = object_calculate_paths_exec;
   ot->poll = ED_operator_object_active_editable;
 
-  /* flags */
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-  /* properties */
   RNA_def_enum(ot->srna,
                "display_type",
                rna_enum_motionpath_display_type_items,
@@ -1299,59 +932,25 @@ void OBJECT_OT_paths_calculate(wmOperatorType *ot)
 /** \name Update Motion Paths Operator
  * \{ */
 
-static bool object_update_paths_poll(bContext *C)
+static bool object_update_paths_poll(bContext * /*C*/)
 {
-  if (ED_operator_object_active_editable(C)) {
-    Object *ob = context_active_object(C);
-    return (ob->avs.path_bakeflag & MOTIONPATH_BAKE_HAS_PATHS) != 0;
-  }
-
   return false;
 }
 
-static wmOperatorStatus object_update_paths_exec(bContext *C, wmOperator *op)
+static wmOperatorStatus object_update_paths_exec(bContext * /*C*/, wmOperator * /*op*/)
 {
-  Scene *scene = CTX_data_scene(C);
-
-  if (scene == nullptr) {
-    return OPERATOR_CANCELLED;
-  }
-  Vector<Object *> selected_objects;
-  CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects) {
-    animviz_motionpath_compute_range(ob, scene);
-    /* verify that the selected object has the appropriate settings */
-    bke::motionpath::ensure(op->reports, scene, ob, nullptr);
-    if (ob->mpath) {
-      ed::motionpath::tag_for_recalc(*ob->mpath);
-      selected_objects.append(ob);
-    }
-  }
-  CTX_DATA_END;
-
-  /* calculate the paths for objects that have them (and are tagged to get refreshed) */
-  motion_paths_recalc(C, scene, selected_objects);
-
-  /* notifiers for updates */
-  WM_event_add_notifier(C, NC_OBJECT | ND_DRAW_ANIMVIZ, nullptr);
-  /* NOTE: the notifier below isn't actually correct, but kept around just to be on the safe side.
-   * If further testing shows it's not necessary (for both bones and objects) removal is fine. */
-  WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM | ND_POSE, nullptr);
-
-  return OPERATOR_FINISHED;
+  return OPERATOR_CANCELLED;
 }
 
 void OBJECT_OT_paths_update(wmOperatorType *ot)
 {
-  /* identifiers */
   ot->name = "Update Object Paths";
   ot->idname = "OBJECT_OT_paths_update";
   ot->description = "Recalculate motion paths for selected objects";
 
-  /* API callbacks. */
   ot->exec = object_update_paths_exec;
   ot->poll = object_update_paths_poll;
 
-  /* flags */
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
@@ -1363,55 +962,23 @@ void OBJECT_OT_paths_update(wmOperatorType *ot)
 
 static bool object_update_all_paths_poll(bContext * /*C*/)
 {
-  return true;
+  return false;
 }
 
-static wmOperatorStatus object_update_all_paths_exec(bContext *C, wmOperator * /*op*/)
+static wmOperatorStatus object_update_all_paths_exec(bContext * /*C*/, wmOperator * /*op*/)
 {
-  Scene *scene = CTX_data_scene(C);
-
-  if (scene == nullptr) {
-    return OPERATOR_CANCELLED;
-  }
-  Vector<Object *> visible_objects_with_mpath;
-  CTX_DATA_BEGIN (C, Object *, ob, visible_objects) {
-    bool has_any_motion_path = false;
-    if (ob->mpath) {
-      ed::motionpath::tag_for_recalc(*ob->mpath);
-      has_any_motion_path = true;
-    }
-    if (ob->pose) {
-      for (bPoseChannel &pchan : ob->pose->chanbase) {
-        if (pchan.mpath) {
-          ed::motionpath::tag_for_recalc(*pchan.mpath);
-          has_any_motion_path = true;
-        }
-      }
-    }
-    if (has_any_motion_path) {
-      visible_objects_with_mpath.append(ob);
-    }
-  }
-  CTX_DATA_END;
-  motion_paths_recalc(C, scene, visible_objects_with_mpath);
-
-  WM_event_add_notifier(C, NC_OBJECT | ND_POSE | ND_TRANSFORM, nullptr);
-
-  return OPERATOR_FINISHED;
+  return OPERATOR_CANCELLED;
 }
 
 void OBJECT_OT_paths_update_visible(wmOperatorType *ot)
 {
-  /* identifiers */
   ot->name = "Update All Object Paths";
   ot->idname = "OBJECT_OT_paths_update_visible";
   ot->description = "Recalculate all visible motion paths for objects and poses";
 
-  /* API callbacks. */
   ot->exec = object_update_all_paths_exec;
   ot->poll = object_update_all_paths_poll;
 
-  /* flags */
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
@@ -1421,48 +988,12 @@ void OBJECT_OT_paths_update_visible(wmOperatorType *ot)
 /** \name Clear Motion Paths Operator
  * \{ */
 
-/* Helper for motion_paths_clear() */
-static void object_clear_mpath(Object *ob)
-{
-  if (ob->mpath) {
-    bke::motionpath::free(ob->mpath);
-    ob->mpath = nullptr;
-    ob->avs.path_bakeflag &= ~MOTIONPATH_BAKE_HAS_PATHS;
+void motion_paths_clear(bContext * /*C*/, bool /*only_selected*/) {}
 
-    /* tag object for copy-on-eval - so removed paths don't still show */
-    DEG_id_tag_update(&ob->id, ID_RECALC_SYNC_TO_EVAL);
-  }
-}
-
-void motion_paths_clear(bContext *C, bool only_selected)
-{
-  if (only_selected) {
-    /* Loop over all selected + editable objects in scene. */
-    CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects) {
-      object_clear_mpath(ob);
-    }
-    CTX_DATA_END;
-  }
-  else {
-    /* Loop over all editable objects in scene. */
-    CTX_DATA_BEGIN (C, Object *, ob, editable_objects) {
-      object_clear_mpath(ob);
-    }
-    CTX_DATA_END;
-  }
-}
-
-/* operator callback for this */
 static wmOperatorStatus object_clear_paths_exec(bContext *C, wmOperator *op)
 {
-  bool only_selected = RNA_boolean_get(op->ptr, "only_selected");
-
-  /* use the backend function for this */
+  const bool only_selected = RNA_boolean_get(op->ptr, "only_selected");
   motion_paths_clear(C, only_selected);
-
-  /* notifiers for updates */
-  WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, nullptr);
-
   return OPERATOR_FINISHED;
 }
 
@@ -1607,10 +1138,6 @@ static wmOperatorStatus shade_smooth_exec(bContext *C, wmOperator *op)
       BKE_mesh_batch_cache_dirty_tag(reinterpret_cast<Mesh *>(data), BKE_MESH_BATCH_DIRTY_ALL);
       changed = true;
     }
-    else if (data->id_type() == ID_CU_LEGACY) {
-      BKE_curve_smooth_flag_set(reinterpret_cast<Curve *>(data), use_smooth);
-      changed = true;
-    }
 
     if (changed) {
       changed_multi = true;
@@ -1718,132 +1245,32 @@ void OBJECT_OT_shade_smooth_by_angle(wmOperatorType *ot)
 /** \name Object Shade Auto Smooth Operator
  * \{ */
 
-/**
- * Does a shallow check for whether the node group could be the Smooth by Angle node group.
- * This should become unnecessary once we asset embedding (#132167).
- */
-static bool is_valid_smooth_by_angle_group(const bNodeTree &ntree)
-{
-  if (ntree.type != NTREE_GEOMETRY) {
-    return false;
-  }
-  if (ntree.interface_inputs().size() != 3) {
-    return false;
-  }
-  if (ntree.interface_outputs().size() != 1) {
-    return false;
-  }
-  return true;
-}
-
 static wmOperatorStatus shade_auto_smooth_exec(bContext *C, wmOperator *op)
 {
   Main &bmain = *CTX_data_main(C);
-  Scene &scene = *CTX_data_scene(C);
-
   const bool use_auto_smooth = RNA_boolean_get(op->ptr, "use_auto_smooth");
   const float angle = RNA_float_get(op->ptr, "angle");
 
   Vector<PointerRNA> ctx_objects;
   CTX_data_selected_editable_objects(C, &ctx_objects);
 
-  if (use_auto_smooth) {
-    AssetWeakReference asset_weak_ref{};
-    asset_weak_ref.asset_library_type = ASSET_LIBRARY_ESSENTIALS;
-    asset_weak_ref.relative_asset_identifier = BLI_strdup(
-        "nodes/geometry_nodes_essentials.blend/NodeTree/Smooth by Angle");
-
-    if (G.background) {
-      /* For testing purposes, make sure assets are loaded (this make take too long to do
-       * automatically during user interaction). */
-      asset::list::storage_fetch_blocking(asset_system::all_library_reference(), *C);
-    }
-
-    const asset_system::AssetRepresentation *asset_representation =
-        asset::find_asset_from_weak_ref(*C, asset_weak_ref, op->reports);
-    if (!asset_representation) {
-      return OPERATOR_CANCELLED;
-    }
-
-    bNodeTree *node_group = nullptr;
-    while (!node_group) {
-      ID *node_group_id = asset::asset_local_id_ensure_imported(bmain, *asset_representation);
-      if (!node_group_id) {
-        return OPERATOR_CANCELLED;
+  bool changed = false;
+  for (const PointerRNA &ob_ptr : ctx_objects) {
+    Object *object = static_cast<Object *>(ob_ptr.data);
+    if (object->type == OB_MESH && BKE_id_is_editable(&bmain, object->data)) {
+      Mesh *mesh = id_cast<Mesh *>(object->data);
+      bke::mesh_smooth_set(*mesh, use_auto_smooth, true);
+      if (use_auto_smooth) {
+        bke::mesh_sharp_edges_set_from_angle(*mesh, angle, true);
       }
-      if (node_group_id->id_type() != ID_NT) {
-        return OPERATOR_CANCELLED;
-      }
-      node_group = reinterpret_cast<bNodeTree *>(node_group_id);
-      node_group->ensure_topology_cache();
-      node_group->ensure_interface_cache();
-      if (is_valid_smooth_by_angle_group(*node_group)) {
-        break;
-      }
-      /* Remove the weak library reference, since the already loaded group is not valid anymore. */
-      MEM_SAFE_DELETE(node_group_id->library_weak_reference);
-      /* Stay in the loop and load the asset again. */
-      node_group = nullptr;
-    }
-
-    const StringRefNull angle_identifier = node_group->interface_inputs()[1]->identifier;
-
-    for (const PointerRNA &ob_ptr : ctx_objects) {
-      Object *object = static_cast<Object *>(ob_ptr.data);
-      if (object->type == OB_MESH) {
-        Mesh *mesh = id_cast<Mesh *>(object->data);
-        bke::mesh_smooth_set(*mesh, true, true);
-        DEG_id_tag_update(&mesh->id, ID_RECALC_GEOMETRY);
-      }
-      NodesModifierData *smooth_by_angle_nmd = nullptr;
-      for (ModifierData &md : object->modifiers) {
-        if (is_smooth_by_angle_modifier(md)) {
-          smooth_by_angle_nmd = reinterpret_cast<NodesModifierData *>(&md);
-          break;
-        }
-      }
-      if (!smooth_by_angle_nmd) {
-        smooth_by_angle_nmd = reinterpret_cast<NodesModifierData *>(
-            modifier_add(op->reports, &bmain, &scene, object, nullptr, eModifierType_Nodes));
-        if (!smooth_by_angle_nmd) {
-          continue;
-        }
-        smooth_by_angle_nmd->modifier.flag |= eModifierFlag_PinLast;
-        smooth_by_angle_nmd->node_group = node_group;
-        id_us_plus(&node_group->id);
-        MOD_nodes_update_interface(bmain, object, smooth_by_angle_nmd);
-        smooth_by_angle_nmd->flag |= NODES_MODIFIER_HIDE_DATABLOCK_SELECTOR |
-                                     NODES_MODIFIER_HIDE_MANAGE_PANEL;
-        STRNCPY_UTF8(smooth_by_angle_nmd->modifier.name, DATA_(node_group->id.name + 2));
-        BKE_modifier_unique_name(&object->modifiers, &smooth_by_angle_nmd->modifier);
-      }
-
-      PointerRNA nmd_ptr = RNA_pointer_create_discrete(
-          &object->id, RNA_NodesModifier, smooth_by_angle_nmd);
-      PointerRNA properties_ptr = RNA_pointer_get(&nmd_ptr, "properties");
-      PointerRNA inputs_ptr = RNA_pointer_get(&properties_ptr, "inputs");
-      PointerRNA input_ptr = RNA_pointer_get(&inputs_ptr, angle_identifier.c_str());
-
-      RNA_float_set(&input_ptr, "value", angle);
-
-      DEG_id_tag_update(&object->id, ID_RECALC_GEOMETRY);
-      WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, object);
-    }
-  }
-  else {
-    for (const PointerRNA &ob_ptr : ctx_objects) {
-      Object *object = static_cast<Object *>(ob_ptr.data);
-      for (ModifierData &md : object->modifiers) {
-        if (is_smooth_by_angle_modifier(md)) {
-          modifier_remove(op->reports, &bmain, &scene, object, &md);
-          WM_main_add_notifier(NC_OBJECT | ND_MODIFIER | NA_REMOVED, object);
-          break;
-        }
-      }
+      BKE_mesh_batch_cache_dirty_tag(mesh, BKE_MESH_BATCH_DIRTY_ALL);
+      DEG_id_tag_update(&mesh->id, ID_RECALC_GEOMETRY);
+      WM_event_add_notifier(C, NC_GEOM | ND_DATA, mesh);
+      changed = true;
     }
   }
 
-  return OPERATOR_FINISHED;
+  return changed ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
 }
 
 static void shade_auto_smooth_ui(bContext * /*C*/, wmOperator *op)

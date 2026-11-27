@@ -16,10 +16,6 @@
 #include "DRW_render.hh"
 #include "draw_context_private.hh"
 
-#include "engines/eevee/eevee_engine.h"
-#include "engines/external/external_engine.h"
-#include "engines/gpencil/gpencil_engine.hh"
-#include "engines/image/image_engine.h"
 #include "engines/overlay/overlay_engine.h"
 #include "engines/select/select_engine.hh"
 #include "engines/workbench/workbench_engine.h"
@@ -70,11 +66,7 @@ struct DRWViewData {
   int2 texture_list_size = {0, 0};
 
   /** Engines running for this viewport. nullptr if not enabled. */
-  eevee::Engine eevee;
   workbench::Engine workbench;
-  draw::external::Engine external;
-  image_engine::Engine image;
-  draw::gpencil::Engine grease_pencil;
   draw::overlay::Engine overlay;
   draw::select::Engine object_select;
   draw::edit_select::Engine edit_select;
@@ -95,16 +87,10 @@ struct DRWViewData {
     /* IMPORTANT: Order here defines the draw order. */
 
     /* Render engines. Output to the render result frame-buffer. Mutually exclusive. */
-
-    callback(eevee);
     callback(workbench);
-    callback(external);
-    callback(image);
 #ifdef WITH_DRAW_DEBUG
     callback(edit_select_debug);
 #endif
-    /** Grease pencil. Merge its output to the render result frame-buffer. */
-    callback(grease_pencil);
     /** Overlays. Draw on a separate overlay frame-buffer. Can read render result. */
     callback(overlay);
 

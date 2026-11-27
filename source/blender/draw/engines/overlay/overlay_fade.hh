@@ -11,7 +11,6 @@
 #include "BKE_modifier.hh"
 #include "BKE_paint.hh"
 
-#include "overlay_armature.hh"
 #include "overlay_base.hh"
 
 namespace blender::draw::overlay {
@@ -177,19 +176,8 @@ class Fade : Overlay {
     return true;
   }
 
-  static bool is_driven_by_active_armature(Object *ob, const State &state)
+  static bool is_driven_by_active_armature(Object * /*ob*/, const State & /*state*/)
   {
-    Object *ob_arm = BKE_modifiers_is_deformed_by_armature(ob);
-    if (ob_arm) {
-      return Armatures::is_pose_mode(ob_arm, state);
-    }
-
-    Object *ob_mesh_deform = BKE_modifiers_is_deformed_by_meshdeform(ob);
-    if (ob_mesh_deform) {
-      /* Recursive. */
-      return is_driven_by_active_armature(ob_mesh_deform, state);
-    }
-
     return false;
   }
 };

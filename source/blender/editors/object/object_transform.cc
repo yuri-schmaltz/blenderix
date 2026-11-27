@@ -32,25 +32,18 @@
 #include "BLI_utildefines.hh"
 #include "BLI_vector.hh"
 
-#include "BKE_armature.hh"
 #include "BKE_context.hh"
-#include "BKE_curve.hh"
-#include "BKE_curves.hh"
 #include "BKE_editmesh.hh"
-#include "BKE_grease_pencil.hh"
 #include "BKE_idtype.hh"
-#include "BKE_lattice.hh"
 #include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_library.hh"
 #include "BKE_main.hh"
-#include "BKE_mball.hh"
 #include "BKE_mesh.hh"
 #include "BKE_multires.hh"
 #include "BKE_object.hh"
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
-#include "BKE_tracking.hh"
 
 #include "BLT_translation.hh"
 
@@ -69,7 +62,6 @@
 #include "ANIM_keyingsets.hh"
 
 #include "ED_anim_api.hh"
-#include "ED_armature.hh"
 #include "ED_mesh.hh"
 #include "ED_object.hh"
 #include "ED_screen.hh"
@@ -699,18 +691,7 @@ static wmOperatorStatus apply_objects_internal(bContext *C,
 
   /* first check if we can execute */
   CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects) {
-    if (ELEM(ob->type,
-             OB_MESH,
-             OB_ARMATURE,
-             OB_LATTICE,
-             OB_MBALL,
-             OB_CURVES_LEGACY,
-             OB_SURF,
-             OB_FONT,
-             OB_CURVES,
-             OB_POINTCLOUD,
-             OB_GREASE_PENCIL))
-    {
+    if (ob->type == OB_MESH) {
       ID *obdata = ob->data;
       if (!do_multi_user && ID_REAL_USERS(obdata) > 1) {
         BKE_reportf(reports,
@@ -729,41 +710,6 @@ static wmOperatorStatus apply_objects_internal(bContext *C,
                     ob->id.name + 2,
                     BKE_idtype_idcode_to_name(GS(obdata->name)),
                     obdata->name + 2);
-        changed = false;
-      }
-    }
-
-    if (ELEM(ob->type, OB_CURVES_LEGACY, OB_SURF)) {
-      ID *obdata = ob->data;
-      Curve *cu = id_cast<Curve *>(ob->data);
-
-      if (((ob->type == OB_CURVES_LEGACY) && !(cu->flag & CU_3D)) && (apply_rot || apply_loc)) {
-        BKE_reportf(
-            reports,
-            RPT_ERROR,
-            R"(Rotation/Location cannot apply to a 2D curve: Object "%s", %s "%s", aborting)",
-            ob->id.name + 2,
-            BKE_idtype_idcode_to_name(GS(obdata->name)),
-            obdata->name + 2);
-        changed = false;
-      }
-      if (cu->key) {
-        BKE_reportf(reports,
-                    RPT_ERROR,
-                    R"(Can't apply to a curve with shape-keys: Object "%s", %s "%s", aborting)",
-                    ob->id.name + 2,
-                    BKE_idtype_idcode_to_name(GS(obdata->name)),
-                    obdata->name + 2);
-        changed = false;
-      }
-    }
-
-    if (ob->type == OB_FONT) {
-      if (apply_rot || apply_loc) {
-        BKE_reportf(reports,
-                    RPT_ERROR,
-                    "Text objects can only have their scale applied: \"%s\"",
-                    ob->id.name + 2);
         changed = false;
       }
     }
@@ -880,96 +826,6 @@ static wmOperatorStatus apply_objects_internal(bContext *C,
       }
       bke::mesh_custom_normals_to_tangent_space(*mesh);
     }
-    else if (ob->type == OB_ARMATURE) {
-      bArmature *arm = id_cast<bArmature *>(ob->data);
-      BKE_armature_transform(arm, mat, do_props);
-    }
-    else if (ob->type == OB_LATTICE) {
-      Lattice *lt = id_cast<Lattice *>(ob->data);
-
-      BKE_lattice_transform(lt, mat, true);
-    }
-    else if (ob->type == OB_MBALL) {
-      MetaBall *mb = id_cast<MetaBall *>(ob->data);
-      BKE_mball_transform(mb, mat, do_props);
-    }
-    else if (ELEM(ob->type, OB_CURVES_LEGACY, OB_SURF)) {
-      Curve *cu = id_cast<Curve *>(ob->data);
-      scale = mat3_to_scale(rsmat);
-      BKE_curve_transform_ex(cu, mat, true, do_props, scale);
-    }
-    else if (ob->type == OB_FONT) {
-      Curve *cu = id_cast<Curve *>(ob->data);
-
-      scale = mat3_to_scale(rsmat);
-
-      for (int i = 0; i < cu->totbox; i++) {
-        TextBox *tb = &cu->tb[i];
-        tb->x *= scale;
-        tb->y *= scale;
-        tb->w *= scale;
-        tb->h *= scale;
-      }
-
-      if (do_props) {
-        cu->fsize *= scale;
-      }
-    }
-    else if (ob->type == OB_CURVES) {
-      Curves &curves = *id_cast<Curves *>(ob->data);
-      curves.geometry.wrap().transform(float4x4(mat));
-      curves.geometry.wrap().calculate_bezier_auto_handles();
-    }
-    else if (ob->type == OB_GREASE_PENCIL) {
-      GreasePencil &grease_pencil = *id_cast<GreasePencil *>(ob->data);
-
-      const float scalef = mat4_to_scale(mat);
-
-      for (const int layer_i : grease_pencil.layers().index_range()) {
-        bke::greasepencil::Layer &layer = grease_pencil.layer(layer_i);
-        const float4x4 layer_to_object = layer.to_object_space(*ob);
-        const float4x4 object_to_layer = math::invert(layer_to_object);
-        const Map<bke::greasepencil::FramesMapKeyT, GreasePencilFrame> frames = layer.frames();
-        frames.foreach_item(
-            [&](bke::greasepencil::FramesMapKeyT /*key*/, GreasePencilFrame frame) {
-              GreasePencilDrawingBase *base = grease_pencil.drawing(frame.drawing_index);
-              if (base->type != GP_DRAWING) {
-                return;
-              }
-              bke::greasepencil::Drawing &drawing =
-                  reinterpret_cast<GreasePencilDrawing *>(base)->wrap();
-              bke::CurvesGeometry &curves = drawing.strokes_for_write();
-              MutableSpan<float> radii = drawing.radii_for_write();
-              threading::parallel_for(radii.index_range(), 8192, [&](const IndexRange range) {
-                for (const int i : range) {
-                  radii[i] *= scalef;
-                }
-              });
-
-              curves.transform(object_to_layer * float4x4(mat) * layer_to_object);
-              curves.calculate_bezier_auto_handles();
-            });
-      }
-    }
-    else if (ob->type == OB_POINTCLOUD) {
-      PointCloud &pointcloud = *id_cast<PointCloud *>(ob->data);
-      math::transform_points(float4x4(mat), pointcloud.positions_for_write());
-      pointcloud.tag_positions_changed();
-    }
-    else if (ob->type == OB_CAMERA) {
-      MovieClip *clip = BKE_object_movieclip_get(scene, ob, false);
-
-      /* applying scale on camera actually scales clip's reconstruction.
-       * of there's clip assigned to camera nothing to do actually.
-       */
-      if (!clip) {
-        continue;
-      }
-
-      if (apply_scale) {
-        BKE_tracking_reconstruction_scale(&clip->tracking, ob->scale);
-      }
-    }
     else if (ob->type == OB_EMPTY) {
       /* It's possible for empties too, even though they don't
        * really have obdata, since we can simply apply the maximum
@@ -1076,12 +932,6 @@ static wmOperatorStatus apply_objects_internal(bContext *C,
     BKE_object_transform_copy(ob_eval, ob);
 
     BKE_object_where_is_calc(depsgraph, scene, ob_eval);
-    if (ob->type == OB_ARMATURE) {
-      /* needed for bone parents */
-      BKE_armature_copy_bone_transforms(id_cast<bArmature *>(ob_eval->data),
-                                        id_cast<bArmature *>(ob->data));
-      BKE_pose_where_is(depsgraph, scene, ob_eval);
-    }
 
     ignore_parent_tx(bmain, depsgraph, scene, ob);
 
@@ -1278,15 +1128,6 @@ enum {
   ORIGIN_TO_CENTER_OF_MASS_VOLUME,
 };
 
-static float3 arithmetic_mean(const Span<float3> values)
-{
-  if (values.is_empty()) {
-    return float3(0);
-  }
-  /* TODO: Use a method that avoids overflow. */
-  return std::accumulate(values.begin(), values.end(), float3(0)) / values.size();
-}
-
 static wmOperatorStatus object_origin_set_exec(bContext *C, wmOperator *op)
 {
   Main *bmain = CTX_data_main(C);
@@ -1477,288 +1318,6 @@ static wmOperatorStatus object_origin_set_exec(bContext *C, wmOperator *op)
         do_inverse_offset = true;
       }
     }
-    else if (ELEM(ob->type, OB_CURVES_LEGACY, OB_SURF)) {
-      Curve *cu = id_cast<Curve *>(ob->data);
-
-      if (centermode == ORIGIN_TO_CURSOR) {
-        /* done */
-      }
-      else if (around == V3D_AROUND_CENTER_BOUNDS) {
-        if (std::optional<Bounds<float3>> bounds = BKE_curve_minmax(cu, true)) {
-          cent = math::midpoint(bounds->min, bounds->max);
-        }
-      }
-      else { /* #V3D_AROUND_CENTER_MEDIAN. */
-        BKE_curve_center_median(cu, cent);
-      }
-
-      /* don't allow Z change if curve is 2D */
-      if ((ob->type == OB_CURVES_LEGACY) && !(cu->flag & CU_3D)) {
-        cent[2] = 0.0;
-      }
-
-      negate_v3_v3(cent_neg, cent);
-      BKE_curve_translate(cu, cent_neg, true);
-
-      tot_change++;
-      cu->id.tag |= ID_TAG_DOIT;
-      do_inverse_offset = true;
-
-      if (obedit) {
-        if (centermode == GEOMETRY_TO_ORIGIN) {
-          DEG_id_tag_update(&obedit->id, ID_RECALC_GEOMETRY);
-        }
-        break;
-      }
-    }
-    else if (ob->type == OB_FONT) {
-      /* Get from bounding-box. */
-
-      Curve *cu = id_cast<Curve *>(ob->data);
-      std::optional<Bounds<float3>> bounds = BKE_curve_minmax(cu, true);
-
-      if (!bounds && (centermode != ORIGIN_TO_CURSOR)) {
-        /* Do nothing. */
-      }
-      else {
-        if (centermode == ORIGIN_TO_CURSOR) {
-          /* Done. */
-        }
-        else {
-          /* extra 0.5 is the height o above line */
-          cent = math::midpoint(bounds->min, bounds->max);
-        }
-
-        cent[2] = 0.0f;
-
-        cu->xof = cu->xof - cent[0];
-        cu->yof = cu->yof - cent[1];
-
-        tot_change++;
-        cu->id.tag |= ID_TAG_DOIT;
-        do_inverse_offset = true;
-      }
-    }
-    else if (ob->type == OB_ARMATURE) {
-      bArmature *arm = id_cast<bArmature *>(ob->data);
-
-      if (ID_REAL_USERS(arm) > 1) {
-#if 0
-        BKE_report(op->reports, RPT_ERROR, "Cannot apply to a multi user armature");
-        return;
-#endif
-        tot_multiuser_arm_error++;
-      }
-      else {
-        /* Function to recenter armatures in editarmature.c
-         * Bone + object locations are handled there.
-         */
-        ED_armature_origin_set(bmain, ob, cursor, centermode, around);
-
-        tot_change++;
-        arm->id.tag |= ID_TAG_DOIT;
-        // do_inverse_offset = true; /* docenter_armature() handles this. */
-
-        Object *ob_eval = DEG_get_evaluated(depsgraph, ob);
-        BKE_object_transform_copy(ob_eval, ob);
-        BKE_armature_copy_bone_transforms(id_cast<bArmature *>(ob_eval->data),
-                                          id_cast<bArmature *>(ob->data));
-        BKE_object_where_is_calc(depsgraph, scene, ob_eval);
-        BKE_pose_where_is(depsgraph, scene, ob_eval); /* needed for bone parents */
-
-        ignore_parent_tx(bmain, depsgraph, scene, ob);
-
-        if (obedit) {
-          break;
-        }
-      }
-    }
-    else if (ob->type == OB_MBALL) {
-      MetaBall *mb = id_cast<MetaBall *>(ob->data);
-
-      if (centermode == ORIGIN_TO_CURSOR) {
-        /* done */
-      }
-      else if (around == V3D_AROUND_CENTER_BOUNDS) {
-        BKE_mball_center_bounds(mb, cent);
-      }
-      else { /* #V3D_AROUND_CENTER_MEDIAN. */
-        BKE_mball_center_median(mb, cent);
-      }
-
-      negate_v3_v3(cent_neg, cent);
-      BKE_mball_translate(mb, cent_neg);
-
-      tot_change++;
-      mb->id.tag |= ID_TAG_DOIT;
-      do_inverse_offset = true;
-
-      if (obedit) {
-        if (centermode == GEOMETRY_TO_ORIGIN) {
-          DEG_id_tag_update(&obedit->id, ID_RECALC_GEOMETRY);
-        }
-        break;
-      }
-    }
-    else if (ob->type == OB_LATTICE) {
-      Lattice *lt = id_cast<Lattice *>(ob->data);
-
-      if (centermode == ORIGIN_TO_CURSOR) {
-        /* done */
-      }
-      else if (around == V3D_AROUND_CENTER_BOUNDS) {
-        if (std::optional<Bounds<float3>> bounds = BKE_lattice_minmax(lt)) {
-          cent = math::midpoint(bounds->min, bounds->max);
-        }
-      }
-      else { /* #V3D_AROUND_CENTER_MEDIAN. */
-        BKE_lattice_center_median(lt, cent);
-      }
-
-      negate_v3_v3(cent_neg, cent);
-      BKE_lattice_translate(lt, cent_neg, true);
-
-      tot_change++;
-      lt->id.tag |= ID_TAG_DOIT;
-      do_inverse_offset = true;
-    }
-    else if (ob->type == OB_CURVES) {
-      Curves &curves_id = *id_cast<Curves *>(ob->data);
-      bke::CurvesGeometry &curves = curves_id.geometry.wrap();
-      if (ELEM(centermode, ORIGIN_TO_CENTER_OF_MASS_SURFACE, ORIGIN_TO_CENTER_OF_MASS_VOLUME) ||
-          !ELEM(around, V3D_AROUND_CENTER_BOUNDS, V3D_AROUND_CENTER_MEDIAN))
-      {
-        BKE_report(
-            op->reports, RPT_WARNING, "Curves Object does not support this set origin operation");
-        continue;
-      }
-
-      if (curves.is_empty()) {
-        continue;
-      }
-
-      if (centermode == ORIGIN_TO_CURSOR) {
-        /* done */
-      }
-      else if (around == V3D_AROUND_CENTER_BOUNDS) {
-        const Bounds<float3> bounds = *curves.bounds_min_max();
-        cent = math::midpoint(bounds.min, bounds.max);
-      }
-      else if (around == V3D_AROUND_CENTER_MEDIAN) {
-        cent = arithmetic_mean(curves.positions());
-      }
-
-      tot_change++;
-      curves.translate(-cent);
-      curves_id.id.tag |= ID_TAG_DOIT;
-      do_inverse_offset = true;
-    }
-    else if (ob->type == OB_GREASE_PENCIL) {
-      GreasePencil &grease_pencil = *id_cast<GreasePencil *>(ob->data);
-      if (ELEM(centermode, ORIGIN_TO_CENTER_OF_MASS_SURFACE, ORIGIN_TO_CENTER_OF_MASS_VOLUME) ||
-          !ELEM(around, V3D_AROUND_CENTER_BOUNDS, V3D_AROUND_CENTER_MEDIAN))
-      {
-        BKE_report(op->reports,
-                   RPT_WARNING,
-                   "Grease Pencil Object does not support this set origin operation");
-        continue;
-      }
-
-      if (centermode == ORIGIN_TO_CURSOR) {
-        /* done */
-      }
-      else if (around == V3D_AROUND_CENTER_BOUNDS) {
-        const int current_frame = scene->r.cfra;
-        if (const std::optional<Bounds<float3>> bounds = grease_pencil.bounds_min_max(
-                current_frame))
-        {
-          cent = math::midpoint(bounds->min, bounds->max);
-        }
-      }
-      else if (around == V3D_AROUND_CENTER_MEDIAN) {
-        const int current_frame = scene->r.cfra;
-        float3 center = float3(0.0f);
-        int total_points = 0;
-
-        for (const int layer_i : grease_pencil.layers().index_range()) {
-          const bke::greasepencil::Layer &layer = grease_pencil.layer(layer_i);
-          const float4x4 layer_to_object = layer.local_transform();
-          if (!layer.is_visible()) {
-            continue;
-          }
-          if (const bke::greasepencil::Drawing *drawing = grease_pencil.get_drawing_at(
-                  layer, current_frame))
-          {
-            const bke::CurvesGeometry &curves = drawing->strokes();
-            const Span<float3> positions = curves.positions();
-
-            for (const int i : positions.index_range()) {
-              center += math::transform_point(layer_to_object, positions[i]);
-            }
-            total_points += positions.size();
-          }
-        }
-
-        if (total_points != 0) {
-          cent = center / total_points;
-        }
-      }
-
-      tot_change++;
-
-      for (const int layer_i : grease_pencil.layers().index_range()) {
-        bke::greasepencil::Layer &layer = grease_pencil.layer(layer_i);
-        const float4x4 layer_to_object = layer.local_transform();
-        const float4x4 object_to_layer = math::invert(layer_to_object);
-        const Map<bke::greasepencil::FramesMapKeyT, GreasePencilFrame> frames = layer.frames();
-        frames.foreach_item(
-            [&](bke::greasepencil::FramesMapKeyT /*key*/, GreasePencilFrame frame) {
-              GreasePencilDrawingBase *base = grease_pencil.drawing(frame.drawing_index);
-              if (base->type != GP_DRAWING) {
-                return;
-              }
-              bke::greasepencil::Drawing &drawing =
-                  reinterpret_cast<GreasePencilDrawing *>(base)->wrap();
-              bke::CurvesGeometry &curves = drawing.strokes_for_write();
-
-              curves.translate(math::transform_direction(object_to_layer, -cent));
-              curves.calculate_bezier_auto_handles();
-            });
-      }
-
-      grease_pencil.id.tag |= ID_TAG_DOIT;
-      do_inverse_offset = true;
-    }
-    else if (ob->type == OB_POINTCLOUD) {
-      PointCloud &pointcloud = *id_cast<PointCloud *>(ob->data);
-      MutableSpan<float3> positions = pointcloud.positions_for_write();
-      if (ELEM(centermode, ORIGIN_TO_CENTER_OF_MASS_SURFACE, ORIGIN_TO_CENTER_OF_MASS_VOLUME) ||
-          !ELEM(around, V3D_AROUND_CENTER_BOUNDS, V3D_AROUND_CENTER_MEDIAN))
-      {
-        BKE_report(op->reports,
-                   RPT_WARNING,
-                   "Point cloud object does not support this set origin operation");
-        continue;
-      }
-
-      if (centermode == ORIGIN_TO_CURSOR) {
-        /* Done. */
-      }
-      else if (around == V3D_AROUND_CENTER_BOUNDS) {
-        if (const std::optional<Bounds<float3>> bounds = pointcloud.bounds_min_max()) {
-          cent = math::midpoint(bounds->min, bounds->max);
-        }
-      }
-      else if (around == V3D_AROUND_CENTER_MEDIAN) {
-        cent = arithmetic_mean(positions);
-      }
-
-      tot_change++;
-      math::translate_points(positions, -cent);
-      pointcloud.tag_positions_changed();
-      pointcloud.id.tag |= ID_TAG_DOIT;
-      do_inverse_offset = true;
-    }
     else {
       const ID *obdata = static_cast<const ID *>(ob->data);
       const short idcode = GS(obdata->name);
@@ -1789,18 +1348,8 @@ static wmOperatorStatus object_origin_set_exec(bContext *C, wmOperator *op)
       Object *ob_eval = DEG_get_evaluated(depsgraph, ob);
       BKE_object_transform_copy(ob_eval, ob);
       BKE_object_where_is_calc(depsgraph, scene, ob_eval);
-      if (ob->type == OB_ARMATURE) {
-        /* needed for bone parents */
-        BKE_armature_copy_bone_transforms(id_cast<bArmature *>(ob_eval->data),
-                                          id_cast<bArmature *>(ob->data));
-        BKE_pose_where_is(depsgraph, scene, ob_eval);
-      }
 
       ignore_parent_tx(bmain, depsgraph, scene, ob);
-
-      /* other users? */
-      // CTX_DATA_BEGIN (C, Object *, ob_other, selected_editable_objects)
-      //{
 
       /* use existing context looper */
       for (Object *ob_other : objects) {
@@ -1819,16 +1368,9 @@ static wmOperatorStatus object_origin_set_exec(bContext *C, wmOperator *op)
           Object *ob_other_eval = DEG_get_evaluated(depsgraph, ob_other);
           BKE_object_transform_copy(ob_other_eval, ob_other);
           BKE_object_where_is_calc(depsgraph, scene, ob_other_eval);
-          if (ob_other->type == OB_ARMATURE) {
-            /* needed for bone parents */
-            BKE_armature_copy_bone_transforms(id_cast<bArmature *>(ob_eval->data),
-                                              id_cast<bArmature *>(ob->data));
-            BKE_pose_where_is(depsgraph, scene, ob_other_eval);
-          }
           ignore_parent_tx(bmain, depsgraph, scene, ob_other);
         }
       }
-      // CTX_DATA_END;
     }
   }
 

@@ -27,8 +27,6 @@
 
 #include "BLT_translation.hh"
 
-#include "BKE_action.hh"
-#include "BKE_armature.hh"
 #include "BKE_collection.hh"
 #include "BKE_context.hh"
 #include "BKE_global.hh"
@@ -36,7 +34,6 @@
 #include "BKE_lib_id.hh"
 #include "BKE_main.hh"
 #include "BKE_material.hh"
-#include "BKE_particle.h"
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
 
@@ -46,15 +43,12 @@
 #include "WM_message.hh"
 #include "WM_types.hh"
 
-#include "ED_armature.hh"
 #include "ED_keyframing.hh"
 #include "ED_object.hh"
 #include "ED_outliner.hh"
 #include "ED_screen.hh"
 #include "ED_select_utils.hh"
 
-#include "ANIM_armature.hh"
-#include "ANIM_bone_collections.hh"
 #include "ANIM_keyingsets.hh"
 
 #include "UI_interface.hh"
@@ -285,72 +279,11 @@ bool jump_to_object(bContext *C, Object *ob, const bool /*reveal_hidden*/)
   return true;
 }
 
-bool jump_to_bone(bContext *C, Object *ob, const char *bone_name, const bool reveal_hidden)
+bool jump_to_bone(bContext * /*C*/,
+                  Object * /*ob*/,
+                  const char * /*bone_name*/,
+                  const bool /*reveal_hidden*/)
 {
-  /* Verify it's a valid armature object. */
-  if (ob == nullptr || ob->type != OB_ARMATURE) {
-    return false;
-  }
-
-  bArmature *arm = id_cast<bArmature *>(ob->data);
-
-  /* Activate the armature object. */
-  if (!jump_to_object(C, ob, reveal_hidden)) {
-    return false;
-  }
-
-  /* Switch to pose mode from object mode. */
-  if (!ELEM(ob->mode, OB_MODE_EDIT, OB_MODE_POSE)) {
-    mode_set(C, OB_MODE_POSE);
-  }
-
-  if (ob->mode == OB_MODE_EDIT && arm->edbo != nullptr) {
-    /* In Edit mode select and activate the target Edit-Bone. */
-    EditBone *ebone = ED_armature_ebone_find_name(arm->edbo, bone_name);
-    if (ebone != nullptr) {
-      if (reveal_hidden) {
-        /* Unhide the bone. */
-        ebone->flag &= ~BONE_HIDDEN_A;
-        ANIM_armature_bonecoll_show_from_ebone(arm, ebone);
-      }
-
-      /* Select it. */
-      ED_armature_edit_deselect_all(ob);
-
-      if (EBONE_SELECTABLE(arm, ebone)) {
-        ED_armature_ebone_select_set(ebone, true);
-        ED_armature_edit_sync_selection(arm->edbo);
-      }
-
-      arm->act_edbone = ebone;
-
-      ED_pose_bone_select_tag_update(ob);
-      ED_outliner_select_sync_from_edit_bone_tag(C);
-      return true;
-    }
-  }
-  else if (ob->mode == OB_MODE_POSE && ob->pose != nullptr) {
-    /* In Pose mode select and activate the target Bone/Pose-Channel. */
-    bPoseChannel *pchan = BKE_pose_channel_find_name(ob->pose, bone_name);
-    if (pchan != nullptr) {
-      if (reveal_hidden) {
-        /* Unhide the bone. */
-        pchan->drawflag &= ~PCHAN_DRAW_HIDDEN;
-        ANIM_armature_bonecoll_show_from_pchan(arm, pchan);
-      }
-
-      /* Select it. */
-      ED_pose_deselect_all(ob, SEL_DESELECT, true);
-      ED_pose_bone_select(ob, pchan, true, true);
-
-      arm->act_bone = pchan->bone_get(*ob);
-
-      ED_pose_bone_select_tag_update(ob);
-      ED_outliner_select_sync_from_pose_bone_tag(C);
-      return true;
-    }
-  }
-
   return false;
 }
 
@@ -530,31 +463,6 @@ static bool object_select_all_by_instance_collection(bContext *C, Object *ob)
   return changed;
 }
 
-static bool object_select_all_by_particle(bContext *C, const ParticleSystem *psys_act)
-{
-  bool changed = false;
-
-  CTX_DATA_BEGIN (C, Base *, base, visible_bases) {
-    if (((base->flag & BASE_SELECTED) == 0) && ((base->flag & BASE_SELECTABLE) != 0)) {
-      /* Loop through other particles. */
-      for (ParticleSystem &psys : base->object->particlesystem) {
-        if (psys.part == psys_act->part) {
-          base_select(base, BA_SELECT);
-          changed = true;
-          break;
-        }
-
-        if (base->flag & BASE_SELECTED) {
-          break;
-        }
-      }
-    }
-  }
-  CTX_DATA_END;
-
-  return changed;
-}
-
 static bool object_select_all_by_library(bContext *C, Library *lib)
 {
   bool changed = false;
@@ -665,12 +573,7 @@ static wmOperatorStatus object_select_linked_exec(bContext *C, wmOperator *op)
     changed = object_select_all_by_instance_collection(C, ob);
   }
   else if (nr == OBJECT_SELECT_LINKED_PARTICLE) {
-    const ParticleSystem *psys_act = psys_get_current(ob);
-    if (psys_act == nullptr) {
-      return OPERATOR_CANCELLED;
-    }
-
-    changed = object_select_all_by_particle(C, psys_act);
+    return OPERATOR_CANCELLED;
   }
   else if (nr == OBJECT_SELECT_LINKED_LIBRARY) {
     /* do nothing */

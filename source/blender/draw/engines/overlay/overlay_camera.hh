@@ -10,7 +10,6 @@
 
 #include "BKE_camera.h"
 #include "BKE_image_gpu.hh"
-#include "BKE_tracking.hh"
 #include "BLI_math_color_c.hh"
 #include "BLI_math_matrix_c.hh"
 #include "BLI_math_rotation_c.hh"
@@ -158,8 +157,6 @@ class Cameras : Overlay {
     const select::ID select_id = res.select_id(ob_ref);
 
     object_sync_extras(ob_ref, select_id, state, res);
-
-    object_sync_motion_paths(ob_ref, res, state);
 
     object_sync_images(ob_ref, select_id, manager, state, res);
   }
@@ -412,297 +409,15 @@ class Cameras : Overlay {
     }
   }
 
-  void object_sync_motion_paths(const ObjectRef &ob_ref, Resources &res, const State &state)
-  {
-    if (!motion_tracking_enabled_) {
-      return;
-    }
-
-    Object *ob = ob_ref.object;
-    const View3D *v3d = state.v3d;
-    const Scene *scene = state.scene;
-
-    MovieClip *clip = BKE_object_movieclip_get(const_cast<Scene *>(scene), ob, false);
-    if (clip == nullptr) {
-      return;
-    }
-
-    const float4 &color = res.object_wire_color(ob_ref, state);
-
-    const bool is_selection = res.is_selection();
-    const bool is_solid_bundle = (v3d->bundle_drawtype == OB_EMPTY_SPHERE) &&
-                                 ((v3d->shading.type != OB_SOLID) || !XRAY_FLAG_ENABLED(v3d));
-
-    MovieTracking *tracking = &clip->tracking;
-    /* Index must start in 1, to mimic BKE_tracking_track_get_for_selection_index. */
-    int track_index = 1;
-
-    float4 bundle_color_custom;
-    float *bundle_color_solid = res.theme.colors.bundle_solid;
-    float *bundle_color_unselected = res.theme.colors.wire;
-    uchar4 text_color_selected, text_color_unselected;
-    /* Color Management: Exception here as texts are drawn in sRGB space directly. */
-    ui::theme::get_color_4ubv(TH_SELECT, text_color_selected);
-    ui::theme::get_color_4ubv(TH_TEXT, text_color_unselected);
-
-    float4x4 camera_mat;
-    BKE_tracking_get_camera_object_matrix(ob, camera_mat.ptr());
-
-    const float4x4 object_to_world{ob->object_to_world().ptr()};
-
-    for (MovieTrackingObject *tracking_object :
-         ListBaseWrapper<MovieTrackingObject>(&tracking->objects))
-    {
-      float4x4 tracking_object_mat;
-
-      if (tracking_object->flag & TRACKING_OBJECT_CAMERA) {
-        tracking_object_mat = camera_mat;
-      }
-      else {
-        const int framenr = BKE_movieclip_remap_scene_to_clip_frame(
-            clip, DEG_get_ctime(state.depsgraph));
-
-        float4x4 object_mat;
-        BKE_tracking_camera_get_reconstructed_interpolate(
-            tracking, tracking_object, framenr, object_mat.ptr());
-
-        tracking_object_mat = object_to_world * math::invert(object_mat);
-      }
-
-      for (MovieTrackingTrack *track :
-           ListBaseWrapper<MovieTrackingTrack>(&tracking_object->tracks))
-      {
-        if ((track->flag & TRACK_HAS_BUNDLE) == 0) {
-          continue;
-        }
-        bool is_selected = TRACK_SELECTED(track);
-
-        float4x4 bundle_mat = math::translate(tracking_object_mat, float3(track->bundle_pos));
-
-        const float *bundle_color;
-        if (track->flag & TRACK_CUSTOMCOLOR) {
-          /* Meh, hardcoded srgb transform here. */
-          /* TODO: change the actual DNA color to be linear. */
-          srgb_to_linearrgb_v3_v3(bundle_color_custom, track->color);
-          bundle_color_custom[3] = 1.0;
-
-          bundle_color = bundle_color_custom;
-        }
-        else if (is_solid_bundle) {
-          bundle_color = bundle_color_solid;
-        }
-        else if (is_selected) {
-          bundle_color = color;
-        }
-        else {
-          bundle_color = bundle_color_unselected;
-        }
-
-        const select::ID track_select_id = res.select_id(ob_ref, track_index++ << 16);
-        if (is_solid_bundle) {
-          if (is_selected) {
-            Empties::object_sync(track_select_id,
-                                 bundle_mat,
-                                 v3d->bundle_size,
-                                 v3d->bundle_drawtype,
-                                 color,
-                                 call_buffers_.empties);
-          }
-
-          call_buffers_.sphere_solid_buf.append(
-              ExtraInstanceData{bundle_mat, float4(float3(bundle_color), 1.0f), v3d->bundle_size},
-              track_select_id);
-        }
-        else {
-          Empties::object_sync(track_select_id,
-                               bundle_mat,
-                               v3d->bundle_size,
-                               v3d->bundle_drawtype,
-                               bundle_color,
-                               call_buffers_.empties);
-        }
-
-        if ((v3d->flag2 & V3D_SHOW_BUNDLENAME) && !is_selection) {
-          DRW_text_cache_add(state.dt,
-                             bundle_mat[3],
-                             track->name,
-                             strlen(track->name),
-                             10,
-                             0,
-                             DRW_TEXT_CACHE_GLOBALSPACE | DRW_TEXT_CACHE_STRING_PTR,
-                             is_selected ? text_color_selected : text_color_unselected);
-        }
-      }
-
-      if ((v3d->flag2 & V3D_SHOW_CAMERAPATH) && (tracking_object->flag & TRACKING_OBJECT_CAMERA) &&
-          !is_selection)
-      {
-        const MovieTrackingReconstruction *reconstruction = &tracking_object->reconstruction;
-
-        if (reconstruction->camnr) {
-          const MovieReconstructedCamera *camera = reconstruction->cameras;
-          float3 v0, v1 = float3(0.0f);
-          for (int a = 0; a < reconstruction->camnr; a++, camera++) {
-            v0 = v1;
-            v1 = math::transform_point(camera_mat, float3(camera->mat[3]));
-            if (a > 0) {
-              /* This one is suboptimal (gl_lines instead of gl_line_strip)
-               * but we keep this for simplicity */
-              call_buffers_.tracking_path.append(v0, v1, TH_CAMERA_PATH);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  void object_sync_images(const ObjectRef &ob_ref,
-                          select::ID select_id,
-                          Manager &manager,
-                          const State &state,
-                          Resources &res)
-  {
-    Object *ob = ob_ref.object;
-    const Camera &cam = DRW_object_get_data_for_drawing<Camera>(*ob_ref.object);
-    const Object *camera_object = DEG_get_evaluated(state.depsgraph, state.v3d->camera);
-
-    const bool is_active = ob_ref.object == camera_object;
-    const bool is_camera_view = (is_active && (state.rv3d->persp == RV3D_CAMOB));
-    const bool show_image = (cam.flag & CAM_SHOW_BG_IMAGE) && !cam.bg_images.is_empty();
-    const bool show_frame = BKE_object_empty_image_frame_is_visible_in_view3d(ob, state.rv3d);
-
-    if (!images_enabled_ || !is_camera_view || !show_image || !show_frame) {
-      return;
-    }
-
-    const bool stereo_eye = Images::images_stereo_eye(state.scene, state.v3d) == STEREO_LEFT_ID;
-    const char *viewname = (stereo_eye == STEREO_LEFT_ID) ? STEREO_RIGHT_NAME : STEREO_LEFT_NAME;
-    float4x4 modelmat;
-    BKE_camera_multiview_model_matrix(&state.scene->r, ob, viewname, modelmat.ptr());
-
-    for (const CameraBGImage *bgpic : ConstListBaseWrapper<CameraBGImage>(&cam.bg_images)) {
-      if (bgpic->flag & CAM_BGIMG_FLAG_DISABLED) {
-        continue;
-      }
-
-      float aspect = 1.0;
-      bool use_alpha_premult;
-      bool use_view_transform = false;
-      float4x4 mat;
-
-      /* retrieve the image we want to show, continue to next when no image could be found */
-      gpu::Texture *tex = image_camera_background_texture_get(
-          bgpic, state, res, aspect, use_alpha_premult, use_view_transform);
-
-      if (tex) {
-        image_camera_background_matrix_get(&cam, bgpic, state, aspect, mat);
-
-        /* Apply roll and flip to image. */
-        if (state.rv3d->camroll != 0.0f || (state.rv3d->rflag & RV3D_FLIP_X) != 0) {
-          transpose_m4(mat.ptr());
-          rotate_m4(mat.ptr(), 'Z', -state.rv3d->camroll);
-          if ((state.rv3d->rflag & RV3D_FLIP_X) != 0) {
-            negate_v4(mat[0]);
-          }
-          transpose_m4(mat.ptr());
-        }
-
-        const bool is_foreground = (bgpic->flag & CAM_BGIMG_FLAG_FOREGROUND) != 0;
-        /* Alpha is clamped just below 1.0 to fix background images to interfere with foreground
-         * images. Without this a background image with 1.0 will be rendered on top of a
-         * transparent foreground image due to the different blending modes they use. */
-        const float4 color_premult_alpha{1.0f, 1.0f, 1.0f, std::min(bgpic->alpha, 0.999999f)};
-
-        PassMain &pass = is_foreground ?
-                             (use_view_transform ? foreground_scene_ps_ : foreground_ps_) :
-                             (use_view_transform ? background_scene_ps_ : background_ps_);
-        pass.bind_texture("img_tx", tex);
-        pass.push_constant("img_premultiplied", use_alpha_premult);
-        pass.push_constant("img_alpha_blend", true);
-        pass.push_constant("is_camera_background", true);
-        pass.push_constant("depth_set", true);
-        pass.push_constant("ucolor", color_premult_alpha);
-        ResourceHandleRange res_handle = manager.resource_handle(mat);
-        pass.draw(res.shapes.quad_solid.get(), res_handle, select_id.get());
-      }
-    }
-  }
-
-  static void image_camera_background_matrix_get(const Camera *cam,
-                                                 const CameraBGImage *bgpic,
-                                                 const State &state,
-                                                 const float image_aspect,
-                                                 float4x4 &rmat)
-  {
-    float4x4 rotate, scale = float4x4::identity(), translate = float4x4::identity();
-
-    axis_angle_to_mat4_single(rotate.ptr(), 'Z', -bgpic->rotation);
-
-    /* Normalized Object space camera frame corners. */
-    float cam_corners[4][3];
-    BKE_camera_view_frame(state.scene, cam, cam_corners);
-    float cam_width = fabsf(cam_corners[0][0] - cam_corners[3][0]);
-    float cam_height = fabsf(cam_corners[0][1] - cam_corners[1][1]);
-    float cam_aspect = cam_width / cam_height;
-
-    if (bgpic->flag & CAM_BGIMG_FLAG_CAMERA_CROP) {
-      /* Crop. */
-      if (image_aspect > cam_aspect) {
-        scale[0][0] *= cam_height * image_aspect;
-        scale[1][1] *= cam_height;
-      }
-      else {
-        scale[0][0] *= cam_width;
-        scale[1][1] *= cam_width / image_aspect;
-      }
-    }
-    else if (bgpic->flag & CAM_BGIMG_FLAG_CAMERA_ASPECT) {
-      /* Fit. */
-      if (image_aspect > cam_aspect) {
-        scale[0][0] *= cam_width;
-        scale[1][1] *= cam_width / image_aspect;
-      }
-      else {
-        scale[0][0] *= cam_height * image_aspect;
-        scale[1][1] *= cam_height;
-      }
-    }
-    else {
-      /* Stretch. */
-      scale[0][0] *= cam_width;
-      scale[1][1] *= cam_height;
-    }
-
-    translate[3][0] = bgpic->offset[0];
-    translate[3][1] = bgpic->offset[1];
-    translate[3][2] = cam_corners[0][2];
-    if (cam->type == CAM_ORTHO) {
-      translate[3][0] *= cam->ortho_scale;
-      translate[3][1] *= cam->ortho_scale;
-    }
-    /* These lines are for keeping 2.80 behavior and could be removed to keep 2.79 behavior. */
-    translate[3][0] *= min_ff(1.0f, cam_aspect);
-    translate[3][1] /= max_ff(1.0f, cam_aspect) * (image_aspect / cam_aspect);
-    /* quad is -1..1 so divide by 2. */
-    scale[0][0] *= 0.5f * bgpic->scale * ((bgpic->flag & CAM_BGIMG_FLAG_FLIP_X) ? -1.0 : 1.0);
-    scale[1][1] *= 0.5f * bgpic->scale * ((bgpic->flag & CAM_BGIMG_FLAG_FLIP_Y) ? -1.0 : 1.0);
-    /* Camera shift. (middle of cam_corners) */
-    translate[3][0] += (cam_corners[0][0] + cam_corners[2][0]) * 0.5f;
-    translate[3][1] += (cam_corners[0][1] + cam_corners[2][1]) * 0.5f;
-
-    rmat = translate * rotate * scale;
-  }
-
   gpu::Texture *image_camera_background_texture_get(const CameraBGImage *bgpic,
                                                     const State &state,
-                                                    Resources &res,
+                                                    Resources & /*res*/,
                                                     float &r_aspect,
                                                     bool &r_use_alpha_premult,
                                                     bool &r_use_view_transform)
   {
     blender::Image *image = bgpic->ima;
     ImageUser *iuser = const_cast<ImageUser *>(&bgpic->iuser);
-    MovieClip *clip = nullptr;
     gpu::Texture *tex = nullptr;
     float aspect_x, aspect_y;
     int width, height;
@@ -743,38 +458,6 @@ class Cameras : Overlay {
 
         aspect_x = bgpic->ima->aspx;
         aspect_y = bgpic->ima->aspy;
-        break;
-      }
-
-      case CAM_BGIMG_SOURCE_MOVIE: {
-        if (bgpic->flag & CAM_BGIMG_FLAG_CAMERACLIP) {
-          if (state.scene->camera) {
-            clip = BKE_object_movieclip_get(
-                const_cast<Scene *>(state.scene), state.scene->camera, true);
-          }
-        }
-        else {
-          clip = bgpic->clip;
-        }
-
-        if (clip == nullptr) {
-          return nullptr;
-        }
-
-        BKE_movieclip_user_set_frame(const_cast<MovieClipUser *>(&bgpic->cuser), ctime);
-        tex = BKE_movieclip_get_gpu_texture(clip, const_cast<MovieClipUser *>(&bgpic->cuser));
-        if (tex == nullptr) {
-          return nullptr;
-        }
-
-        aspect_x = clip->aspx;
-        aspect_y = clip->aspy;
-        r_use_view_transform = true;
-
-        BKE_movieclip_get_size(clip, &bgpic->cuser, &width, &height);
-
-        /* Save for freeing. */
-        res.bg_movie_clips.append(clip);
         break;
       }
 

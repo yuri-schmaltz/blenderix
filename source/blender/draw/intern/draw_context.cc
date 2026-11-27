@@ -31,31 +31,22 @@
 
 #include "BKE_camera.h"
 #include "BKE_context.hh"
-#include "BKE_curve.hh"
-#include "BKE_curves.h"
 #include "BKE_duplilist.hh"
 #include "BKE_editmesh.hh"
 #include "BKE_global.hh"
-#include "BKE_grease_pencil.h"
 #include "BKE_idprop.hh"
-#include "BKE_lattice.hh"
 #include "BKE_layer.hh"
 #include "BKE_main.hh"
-#include "BKE_mball.hh"
 #include "BKE_mesh.hh"
 #include "BKE_mesh_wrapper.hh"
 #include "BKE_modifier.hh"
 #include "BKE_object.hh"
 #include "BKE_object_types.hh"
 #include "BKE_paint.hh"
-#include "BKE_particle.h"
-#include "BKE_pointcache.h"
-#include "BKE_pointcloud.hh"
 #include "BKE_scene.hh"
 #include "BKE_screen.hh"
 #include "BKE_subdiv_modifier.hh"
 #include "BKE_view3d_runtime.hh"
-#include "BKE_volume.hh"
 
 #include "DNA_camera_types.h"
 #include "DNA_mesh_types.h"
@@ -63,7 +54,6 @@
 #include "DNA_view3d_types.h"
 #include "DNA_world_types.h"
 
-#include "ED_gpencil_legacy.hh"
 #include "ED_screen.hh"
 #include "ED_space_api.hh"
 #include "ED_view3d.hh"
@@ -99,10 +89,6 @@
 /* only for callbacks */
 #include "draw_cache_impl.hh"
 
-#include "engines/eevee/eevee_engine.h"
-#include "engines/external/external_engine.h"
-#include "engines/gpencil/gpencil_engine.hh"
-#include "engines/image/image_engine.h"
 #include "engines/overlay/overlay_engine.h"
 #include "engines/select/select_engine.hh"
 #include "engines/workbench/workbench_engine.h"
@@ -152,15 +138,7 @@ DRWContext::DRWContext(Mode mode_,
   /* Edit object. */
   this->object_edit = (this->object_mode & OB_MODE_EDIT) ? this->obact : nullptr;
   /* Pose object. */
-  if (this->object_mode & OB_MODE_POSE) {
-    this->object_pose = this->obact;
-  }
-  else if (this->object_mode & OB_MODE_ALL_WEIGHT_PAINT) {
-    this->object_pose = BKE_object_pose_armature_get(this->obact);
-  }
-  else {
-    this->object_pose = nullptr;
-  }
+  this->object_pose = nullptr;
 
   if (C != nullptr) {
     this->active_tool = WM_toolsystem_ref_from_context(C);
@@ -216,30 +194,6 @@ DefaultFramebufferList *DRWContext::viewport_framebuffer_list_get() const
 DefaultTextureList *DRWContext::viewport_texture_list_get() const
 {
   return const_cast<DefaultTextureList *>(&view_data_active->dtxl);
-}
-
-static bool draw_show_annotation()
-{
-  DRWContext &draw_ctx = drw_get();
-  SpaceLink *space_data = draw_ctx.space_data;
-  View3D *v3d = draw_ctx.v3d;
-
-  if (space_data != nullptr) {
-    switch (space_data->spacetype) {
-      case SPACE_IMAGE: {
-        SpaceImage *sima = reinterpret_cast<SpaceImage *>(space_data);
-        return (sima->flag & SI_SHOW_GPENCIL) != 0;
-      }
-      case SPACE_NODE:
-        /* Don't draw the annotation for the node editor. Annotations are handled by space_image as
-         * the draw manager is only used to draw the background. */
-        return false;
-      default:
-        break;
-    }
-  }
-  return (v3d && ((v3d->flag2 & V3D_SHOW_ANNOTATION) != 0) &&
-          ((v3d->flag2 & V3D_HIDE_OVERLAYS) == 0));
 }
 
 /* -------------------------------------------------------------------- */
@@ -330,37 +284,10 @@ bool DRW_object_use_hide_faces(const Object *ob)
   return false;
 }
 
-bool DRW_object_is_visible_psys_in_active_context(const Object *object, const ParticleSystem *psys)
+bool DRW_object_is_visible_psys_in_active_context(const Object * /*object*/,
+                                                  const ParticleSystem * /*psys*/)
 {
-  const bool for_render = DRW_context_get()->is_image_render();
-  /* NOTE: psys_check_enabled is using object and particle system for only
-   * reading, but is using some other functions which are more generic and
-   * which are hard to make const-pointer. */
-  if (!psys_check_enabled(
-          const_cast<Object *>(object), const_cast<ParticleSystem *>(psys), for_render))
-  {
-    return false;
-  }
-  const DRWContext *draw_ctx = DRW_context_get();
-  const Scene *scene = draw_ctx->scene;
-  if (object == draw_ctx->object_edit) {
-    return false;
-  }
-  const ParticleSettings *part = psys->part;
-  const ParticleEditSettings *pset = &scene->toolsettings->particle;
-  if (object->mode == OB_MODE_PARTICLE_EDIT) {
-    if (psys_in_edit_mode(draw_ctx->depsgraph, psys)) {
-      if ((pset->flag & PE_DRAW_PART) == 0) {
-        return false;
-      }
-      if ((part->childtype == 0) &&
-          (psys->flag & PSYS_HAIR_DYNAMICS && psys->pointcache->flag & PTCACHE_BAKED) == 0)
-      {
-        return false;
-      }
-    }
-  }
-  return true;
+  return false;
 }
 
 const Mesh *DRW_object_get_editmesh_cage_for_drawing(const Object &object)
@@ -396,37 +323,17 @@ DRWData *DRW_viewport_data_create()
   return drw_data;
 }
 
-void DRWData::modules_init()
-{
-  using namespace blender::draw;
-  DRW_pointcloud_init(this);
-  DRW_gsplat_init(this);
-  DRW_curves_init(this);
-  DRW_volume_init(this);
-}
+void DRWData::modules_init() {}
 
-void DRWData::modules_begin_sync()
-{
-  using namespace blender::draw;
-  DRW_curves_begin_sync(this);
-  DRW_smoke_begin_sync(this);
-  DRW_gsplat_begin_sync();
-}
+void DRWData::modules_begin_sync() {}
 
-void DRWData::modules_exit()
-{
-  DRW_smoke_exit(this);
-}
+void DRWData::modules_exit() {}
 
 void DRW_viewport_data_free(DRWData *drw_data)
 {
   for (int i = 0; i < 2; i++) {
     delete drw_data->view_data[i];
   }
-  DRW_volume_module_free(drw_data->volume_module);
-  DRW_pointcloud_module_free(drw_data->pointcloud_module);
-  DRW_gsplat_module_free(drw_data->gsplat_module);
-  DRW_curves_module_free(drw_data->curves_module);
   delete drw_data->default_view;
   MEM_delete(drw_data);
 }
@@ -714,7 +621,6 @@ static bool supports_handle_ranges(DupliObject *dupli, Object *parent, const DRW
 {
   int ob_type = dupli->ob_data ? BKE_object_obdata_to_type(dupli->ob_data) : OB_EMPTY;
   if (!ELEM(ob_type, OB_MESH, OB_CURVES_LEGACY, OB_SURF, OB_FONT, OB_POINTCLOUD)) {
-    /* TODO: Add Grease Pencil support. */
     return false;
   }
 
@@ -725,23 +631,6 @@ static bool supports_handle_ranges(DupliObject *dupli, Object *parent, const DRW
 
   if (BKE_sculptsession_use_pbvh_draw(ob, draw_ctx.rv3d)) {
     return false;
-  }
-
-  if (ob_type == OB_MESH) {
-    for (ParticleSystem &psys : ob->particlesystem) {
-      const int draw_as = (psys.part->draw_as == PART_DRAW_REND) ? psys.part->ren_as :
-                                                                   psys.part->draw_as;
-      if (!ELEM(draw_as, PART_DRAW_NOT, PART_DRAW_OB, PART_DRAW_GR) &&
-          DRW_object_is_visible_psys_in_active_context(ob, &psys))
-      {
-        /* Particles don't support handle ranges.
-         * Objects and Group particles are the only exceptions,
-         * since they're generated as regular instances by the Depsgraph. */
-        return false;
-      }
-    }
-    /* Smoke drawing doesn't support handle ranges. */
-    return !BKE_modifiers_findby_type(ob, eModifierType_Fluid);
   }
 
   return true;
@@ -1236,8 +1125,6 @@ void DRWContext::sync(iter_callback_t iter_callback)
   this->delayed_extraction.clear();
 
   extraction.work_and_wait();
-
-  DRW_curves_update(*view_data_active->manager);
 }
 
 void DRWContext::engines_init_and_sync(iter_callback_t iter_callback)
@@ -1439,18 +1326,13 @@ void DRW_draw_region_engine_info(int xoffset, int *yoffset, int line_height)
   });
 }
 
-void DRWContext::enable_engines(bool gpencil_engine_needed, RenderEngineType *render_engine_type)
+void DRWContext::enable_engines(bool /*gpencil_engine_needed*/,
+                                RenderEngineType * /*render_engine_type*/)
 {
   DRWViewData &view_data = *this->view_data_active;
 
   SpaceLink *space_data = this->space_data;
   if (space_data && space_data->spacetype == SPACE_IMAGE) {
-    if (DRW_engine_external_acquire_for_image_editor(this)) {
-      view_data.external.set_used(true);
-    }
-    else {
-      view_data.image.set_used(true);
-    }
     view_data.overlay.set_used(true);
     return;
   }
@@ -1459,14 +1341,12 @@ void DRWContext::enable_engines(bool gpencil_engine_needed, RenderEngineType *re
     /* Only enable when drawing the space image backdrop. */
     SpaceNode *snode = reinterpret_cast<SpaceNode *>(space_data);
     if ((snode->flag & SNODE_BACKDRAW) != 0) {
-      view_data.image.set_used(true);
       view_data.overlay.set_used(true);
     }
     return;
   }
 
   if (ELEM(this->mode, DRWContext::SELECT_OBJECT, DRWContext::SELECT_OBJECT_MATERIAL)) {
-    view_data.grease_pencil.set_used(gpencil_engine_needed);
     view_data.object_select.set_used(true);
     return;
   }
@@ -1477,44 +1357,13 @@ void DRWContext::enable_engines(bool gpencil_engine_needed, RenderEngineType *re
   }
 
   if (ELEM(this->mode, DRWContext::DEPTH, DRWContext::DEPTH_ACTIVE_OBJECT)) {
-    view_data.grease_pencil.set_used(gpencil_engine_needed);
     view_data.overlay.set_used(true);
     return;
   }
 
   /* Regular V3D drawing. */
   {
-    const eDrawType drawtype = eDrawType(this->v3d->shading.type);
-    const bool use_xray = XRAY_ENABLED(this->v3d);
-
-    /* Base engine. */
-    switch (drawtype) {
-      case OB_WIRE:
-      case OB_SOLID:
-        view_data.workbench.set_used(true);
-        break;
-      case OB_MATERIAL:
-      case OB_RENDER:
-      default:
-        if (render_engine_type == &DRW_engine_viewport_eevee_type) {
-          view_data.eevee.set_used(true);
-        }
-        else if (render_engine_type == &DRW_engine_viewport_workbench_type) {
-          view_data.workbench.set_used(true);
-        }
-        else if (render_engine_type && (render_engine_type->flag & RE_INTERNAL) == 0) {
-          view_data.external.set_used(true);
-        }
-        else {
-          BLI_assert_unreachable();
-        }
-        break;
-    }
-
-    if ((drawtype >= OB_SOLID) || !use_xray) {
-      view_data.grease_pencil.set_used(gpencil_engine_needed);
-    }
-
+    view_data.workbench.set_used(true);
     view_data.overlay.set_used(true);
 
 #ifdef WITH_DRAW_DEBUG
@@ -1528,20 +1377,6 @@ void DRWContext::enable_engines(bool gpencil_engine_needed, RenderEngineType *re
 void DRWContext::engines_data_validate()
 {
   DRW_view_data_free_unused(this->view_data_active);
-}
-
-static bool gpencil_object_is_excluded(View3D *v3d)
-{
-  if (v3d) {
-    return ((v3d->object_type_exclude_viewport & (1 << OB_GREASE_PENCIL)) != 0);
-  }
-  return false;
-}
-
-static bool gpencil_any_exists(Depsgraph *depsgraph)
-{
-  return (DEG_id_type_any_exists(depsgraph, ID_GD_LEGACY) ||
-          DEG_id_type_any_exists(depsgraph, ID_GP));
 }
 
 /** \} */
@@ -1613,12 +1448,9 @@ static void drw_callbacks_pre_scene(DRWContext &draw_ctx)
 
 static void drw_callbacks_post_scene_view3d(DRWContext &draw_ctx)
 {
-  Depsgraph *depsgraph = draw_ctx.depsgraph;
   ARegion *region = draw_ctx.region;
   RegionView3D *rv3d = draw_ctx.rv3d;
   View3D *v3d = draw_ctx.v3d;
-
-  const bool do_annotations = draw_show_annotation();
 
   DefaultFramebufferList *dfbl = DRW_context_get()->viewport_framebuffer_list_get();
 
@@ -1626,15 +1458,6 @@ static void drw_callbacks_post_scene_view3d(DRWContext &draw_ctx)
 
   GPU_matrix_projection_set(rv3d->winmat);
   GPU_matrix_set(rv3d->viewmat);
-
-  /* annotations - temporary drawing buffer (3d space) */
-  /* XXX: Or should we use a proper draw/overlay engine for this case? */
-  if (do_annotations) {
-    GPU_depth_test(GPU_DEPTH_NONE);
-    /* XXX: as `scene->gpd` is not copied for copy-on-eval yet. */
-    ED_annotation_draw_view3d(DEG_get_input_scene(depsgraph), depsgraph, v3d, region, true);
-    GPU_depth_test(GPU_DEPTH_LESS_EQUAL);
-  }
 
   if (draw_ctx.evil_C) {
     GPU_depth_test(GPU_DEPTH_NONE);
@@ -1663,14 +1486,6 @@ static void drw_callbacks_post_scene_view3d(DRWContext &draw_ctx)
     GPU_depth_test(GPU_DEPTH_NONE);
     DRW_draw_region_info(draw_ctx.evil_C, region);
 
-    /* Annotations - temporary drawing buffer (screen-space). */
-    /* XXX: Or should we use a proper draw/overlay engine for this case? */
-    if (((v3d->flag2 & V3D_HIDE_OVERLAYS) == 0) && (do_annotations)) {
-      GPU_depth_test(GPU_DEPTH_NONE);
-      /* XXX: as `scene->gpd` is not copied for copy-on-eval yet */
-      ED_annotation_draw_view3d(DEG_get_input_scene(depsgraph), depsgraph, v3d, region, false);
-    }
-
     if ((v3d->gizmo_flag & V3D_GIZMO_HIDE) == 0) {
       /* Draw 2D after region info so we can draw on top of the camera passepartout overlay.
        * 'DRW_draw_region_info' sets the projection in pixel-space. */
@@ -1685,17 +1500,8 @@ static void drw_callbacks_post_scene_view3d(DRWContext &draw_ctx)
 #ifdef WITH_XR_OPENXR
 static void drw_callbacks_post_scene_xr_surface(DRWContext &draw_ctx)
 {
-  Depsgraph *depsgraph = draw_ctx.depsgraph;
-  ARegion *region = draw_ctx.region;
   RegionView3D *rv3d = draw_ctx.rv3d;
   View3D *v3d = draw_ctx.v3d;
-
-  if (v3d && ((v3d->flag2 & V3D_SHOW_ANNOTATION) != 0)) {
-    GPU_depth_test(GPU_DEPTH_NONE);
-    /* XXX: as `scene->gpd` is not copied for copy-on-eval yet */
-    ED_annotation_draw_view3d(DEG_get_input_scene(depsgraph), depsgraph, v3d, region, true);
-    GPU_depth_test(GPU_DEPTH_LESS_EQUAL);
-  }
 
   DefaultFramebufferList *dfbl = DRW_context_get()->viewport_framebuffer_list_get();
 
@@ -1757,7 +1563,6 @@ static void drw_callbacks_pre_scene_2D(DRWContext &draw_ctx)
 
 static void drw_callbacks_post_scene_2D(DRWContext &draw_ctx, View2D &v2d)
 {
-  const bool do_annotations = draw_show_annotation();
   const bool do_draw_gizmos = (draw_ctx.space_data->spacetype != SPACE_IMAGE);
 
   /* State has been reset at the end `draw_ctx.engines_draw_scene()`. */
@@ -1773,12 +1578,6 @@ static void drw_callbacks_post_scene_2D(DRWContext &draw_ctx, View2D &v2d)
 
     wmOrtho2(v2d.cur.xmin, v2d.cur.xmax, v2d.cur.ymin, v2d.cur.ymax);
 
-    if (do_annotations) {
-      ED_annotation_draw_view2d(draw_ctx.evil_C, true);
-    }
-
-    GPU_depth_test(GPU_DEPTH_NONE);
-
     ED_region_draw_cb_draw(draw_ctx.evil_C, draw_ctx.region, REGION_DRAW_POST_VIEW);
 
     GPU_matrix_pop_projection();
@@ -1787,10 +1586,6 @@ static void drw_callbacks_post_scene_2D(DRWContext &draw_ctx, View2D &v2d)
     draw::command::StateSet::set();
 
     GPU_depth_test(GPU_DEPTH_NONE);
-
-    if (do_annotations) {
-      ED_annotation_draw_view2d(draw_ctx.evil_C, false);
-    }
   }
 
   ED_region_pixelspace(draw_ctx.region);
@@ -2031,46 +1826,9 @@ void DRW_draw_render_loop_offscreen(Depsgraph *depsgraph,
   }
 }
 
-static bool depsgraph_contains_visible_grease_pencil_geometry(
-    Depsgraph *depsgraph, const bool skip_grease_pencil_objects)
+bool DRW_render_check_grease_pencil(Depsgraph * /*depsgraph*/, View3D * /*v3d*/)
 {
-  using namespace blender::bke;
-  bool found = false;
-  DEG_foreach_ID(depsgraph, [&](const ID *id) {
-    const ID *id_eval = DEG_get_evaluated_id(depsgraph, id);
-    if (found) {
-      return;
-    }
-    if (id_eval->id_type() == ID_OB) {
-      const Object *ob = reinterpret_cast<const Object *>(id_eval);
-      if (skip_grease_pencil_objects && ob->type == OB_GREASE_PENCIL) {
-        return;
-      }
-      const bool is_self_visible = BKE_object_visibility(ob, DAG_EVAL_RENDER) & OB_VISIBLE_SELF;
-      const bool contains_grease_pencil_geometry =
-          ob->runtime->contained_geometry_types &
-          uint16_t(1 << size_t(GeometryComponent::Type::GreasePencil));
-      if (is_self_visible && contains_grease_pencil_geometry) {
-        found = true;
-      }
-    }
-  });
-  return found;
-}
-
-bool DRW_render_check_grease_pencil(Depsgraph *depsgraph, View3D *v3d)
-{
-  if (v3d && gpencil_object_is_excluded(v3d)) {
-    /* Grease pencil generated by other object types follows the visibility of their type,
-     * the grease pencil objects themselves are hidden by the per object filter. */
-    return depsgraph_contains_visible_grease_pencil_geometry(depsgraph, true);
-  }
-
-  if (gpencil_any_exists(depsgraph)) {
-    return true;
-  }
-
-  return depsgraph_contains_visible_grease_pencil_geometry(depsgraph, false);
+  return false;
 }
 
 void DRW_custom_pipeline_begin(DRWContext &draw_ctx, Depsgraph * /*depsgraph*/)
